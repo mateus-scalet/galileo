@@ -1,0 +1,7 @@
+{
+  "name": "Interviewer v6 - Mic",
+  "description": "An AI-powered interviewer that generates job-specific questions, conducts an audio interview, and provides detailed feedback and grades on the candidate's performance.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
