@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, GenerateContentResponse } from '@google/genai';
+import { GoogleGenAI, Type, GenerateContentResponse } from '@google/generative-ai';
 import { JobDetails, InterviewQuestion, UserAnswer, EvaluationResult, QuestionGrade, BehavioralQuestion, CvEvaluationResult } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
