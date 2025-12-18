@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GoogleGenAI, Modality, LiveServerMessage, Blob } from '@google/genai';
+import { GoogleGenAI, Modality, LiveServerMessage, Blob } from '@google/generative-ai';
 import { UserAnswer, BehavioralQuestion } from '../types';
 import MicIcon from './icons/MicIcon';
 import StopIcon from './icons/StopIcon';
