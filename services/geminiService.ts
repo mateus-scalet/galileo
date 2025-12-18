@@ -1,35 +1,37 @@
-import { GoogleGenAI, Type, GenerateContentResponse } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, GenerateContentResponse } from '@google/generative-ai';
 import { JobDetails, InterviewQuestion, UserAnswer, EvaluationResult, QuestionGrade, BehavioralQuestion, CvEvaluationResult } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+// Ajuste para o padrão do Vite para ler variáveis de ambiente
+const ai = new GoogleGenerativeAI(import.meta.env.API_KEY as string);
 
-const model = 'gemini-2.5-flash';
+// Usando o modelo estável mais recente
+const modelName = 'gemini-1.5-flash';
 
 const questionSchema = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
     questions: {
-      type: Type.ARRAY,
+      type: SchemaType.ARRAY,
       description: 'A lista de perguntas da entrevista.',
       items: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
           question: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: 'A pergunta a ser feita ao candidato.',
           },
           criteria: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             description: 'Os critérios para avaliar a resposta. A soma dos pontos deve ser 10.',
             items: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
                 text: {
-                  type: Type.STRING,
+                  type: SchemaType.STRING,
                   description: 'A descrição do critério de avaliação.',
                 },
                 points: {
-                  type: Type.NUMBER,
+                  type: SchemaType.NUMBER,
                   description: 'O peso do critério, de 1 a 10.',
                 },
               },
@@ -45,58 +47,58 @@ const questionSchema = {
 };
 
 const evaluationSchema = {
-    type: Type.OBJECT,
+    type: SchemaType.OBJECT,
     properties: {
         globalGrade: {
-            type: Type.NUMBER,
+            type: SchemaType.NUMBER,
             description: 'Uma nota global de 0 a 10 para o candidato, com uma casa decimal.'
         },
         summary: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: 'Um resumo conciso da performance do candidato na entrevista.'
         },
         strengths: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: 'Os principais pontos fortes do candidato, listados em bullet points (usando "- ").'
         },
         areasForImprovement: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: 'As principais áreas para melhoria do candidato, listadas em bullet points (usando "- ").'
         },
         questionGrades: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             description: 'A avaliação detalhada para cada pergunta.',
             items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
                     question: {
-                        type: Type.STRING,
+                        type: SchemaType.STRING,
                         description: 'A pergunta que foi avaliada.'
                     },
                     grade: {
-                        type: Type.NUMBER,
+                        type: SchemaType.NUMBER,
                         description: 'A nota de 0 a 10 para a resposta desta pergunta.'
                     },
                     justification: {
-                        type: Type.STRING,
+                        type: SchemaType.STRING,
                         description: 'A justificativa para a nota da pergunta.'
                     },
                     criterionGrades: {
-                      type: Type.ARRAY,
+                      type: SchemaType.ARRAY,
                       description: 'A avaliação detalhada para cada critério da pergunta.',
                       items: {
-                        type: Type.OBJECT,
+                        type: SchemaType.OBJECT,
                         properties: {
                           criterion: {
-                            type: Type.STRING,
+                            type: SchemaType.STRING,
                             description: 'O critério que foi avaliado.'
                           },
                           grade: {
-                            type: Type.NUMBER,
+                            type: SchemaType.NUMBER,
                             description: 'A nota de 0 a 10 para este critério específico.'
                           },
                           justification: {
-                            type: Type.STRING,
+                            type: SchemaType.STRING,
                             description: 'A justificativa para a nota do critério.'
                           }
                         },
@@ -112,42 +114,42 @@ const evaluationSchema = {
 };
 
 const cvEvaluationSchema = {
-    type: Type.OBJECT,
+    type: SchemaType.OBJECT,
     properties: {
         matchScore: {
-            type: Type.NUMBER,
+            type: SchemaType.NUMBER,
             description: 'Uma nota de 0 a 10 indicando o alinhamento do CV com a vaga, com uma casa decimal.'
         },
         summary: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: 'Um resumo conciso da adequação do candidato à vaga com base no CV.'
         },
         strengths: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: 'Os principais pontos de alinhamento do CV com os requisitos da vaga, em bullet points (usando "- ").'
         },
         weaknesses: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: 'Os principais pontos de desalinhamento ou requisitos importantes não encontrados no CV, em bullet points (usando "- ").'
         },
         followUpQuestions: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             description: 'Uma lista de perguntas de aprofundamento para a entrevista. Se nenhuma pergunta for necessária, retorne um array vazio.',
             items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
                     question: {
-                        type: Type.STRING,
+                        type: SchemaType.STRING,
                         description: 'A pergunta a ser feita ao candidato para esclarecer um ponto do CV.',
                     },
                     criteria: {
-                        type: Type.ARRAY,
+                        type: SchemaType.ARRAY,
                         description: 'Os 3 critérios para avaliar a resposta. A soma dos pontos deve ser exatamente 10.',
                         items: {
-                            type: Type.OBJECT,
+                            type: SchemaType.OBJECT,
                             properties: {
-                                text: { type: Type.STRING, description: 'A descrição do critério.' },
-                                points: { type: Type.NUMBER, description: 'O peso do critério.' },
+                                text: { type: SchemaType.STRING, description: 'A descrição do critério.' },
+                                points: { type: SchemaType.NUMBER, description: 'O peso do critério.' },
                             },
                             required: ['text', 'points'],
                         },
@@ -157,28 +159,27 @@ const cvEvaluationSchema = {
             }
         },
         analysisJustification: {
-          type: Type.STRING,
-          description: "Uma justificativa se nenhuma pergunta de aprofundamento for gerada. Ex: 'O CV é claro e não necessita de esclarecimentos.'"
+          type: SchemaType.STRING,
+          description: "Uma justificativa se nenhuma pergunta de aprofundamento for gerada."
         }
     },
     required: ['matchScore', 'summary', 'strengths', 'weaknesses', 'followUpQuestions']
 };
 
 const originalitySchema = {
-    type: Type.OBJECT,
+    type: SchemaType.OBJECT,
     properties: {
         score: {
-            type: Type.NUMBER,
-            description: 'O score de similaridade de 0 (totalmente original) a 100 (provavelmente gerado por IA).'
+            type: SchemaType.NUMBER,
+            description: 'O score de similaridade de 0 a 100.'
         },
         justification: {
-            type: Type.STRING,
-            description: 'Uma breve justificativa para o score de similaridade.'
+            type: SchemaType.STRING,
+            description: 'Uma breve justificativa.'
         }
     },
     required: ['score', 'justification']
 };
-
 
 const generatePrompt = (template: string, placeholders: Record<string, string | number>): string => {
   return Object.entries(placeholders).reduce((acc, [key, value]) => {
@@ -193,12 +194,9 @@ export const extractKeywordsFromJobDescription = async (details: JobDetails, pro
     });
 
     try {
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-        });
-        // FIX: Use response.text directly as per Gemini API guidelines.
-        return response.text.trim();
+        const model = ai.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim();
     } catch (error) {
         console.error("Erro ao extrair palavras-chave:", error);
         return '';
@@ -212,12 +210,12 @@ const generateBaselineAnswer = async (question: string, jobDetails: JobDetails, 
       jobDescription: jobDetails.description
     });
     try {
-        const response = await ai.models.generateContent({ model, contents: prompt });
-        // FIX: Use response.text directly as per Gemini API guidelines.
-        return response.text.trim();
+        const model = ai.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim();
     } catch (error) {
-        console.error(`Erro ao gerar resposta base para a pergunta: "${question}"`, error);
-        return "Não foi possível gerar uma resposta base para comparação.";
+        console.error(`Erro ao gerar resposta base`, error);
+        return "Não foi possível gerar uma resposta base.";
     }
 };
 
@@ -237,59 +235,45 @@ export const generateQuestions = async (
 
   const prompt = generatePrompt(questionPromptTemplate, promptPlaceholders);
   
-  // FIX: Declare response outside the try block to make it accessible in the catch block for error reporting.
-  let response: GenerateContentResponse;
   try {
-    response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: { responseMimeType: 'application/json', responseSchema: questionSchema },
+    const model = ai.getGenerativeModel({ 
+        model: modelName,
+        generationConfig: { responseMimeType: 'application/json', responseSchema: questionSchema as any }
     });
-
-    // FIX: Use response.text directly as per Gemini API guidelines.
-    const result = JSON.parse(response.text.trim());
+    
+    const response = await model.generateContent(prompt);
+    const result = JSON.parse(response.response.text().trim());
+    
     if (!result || !result.questions) {
-      throw new Error('A resposta da IA não continha a estrutura de "perguntas" esperada.');
+      throw new Error('Estrutura de "perguntas" não encontrada.');
     }
     
-    // Gerar respostas-base em paralelo
     const questionsWithBaselines = await Promise.all(
-        result.questions.map(async (q: Omit<BehavioralQuestion, 'type' | 'baselineAnswer'>) => {
+        result.questions.map(async (q: any) => {
             const baselineAnswer = await generateBaselineAnswer(q.question, details, baselineAnswerPromptTemplate);
             return { ...q, baselineAnswer, type: 'behavioral' as const };
         })
     );
     
     return questionsWithBaselines;
-
   } catch (error: any) {
     console.error("Erro ao gerar perguntas:", error);
-    const message = error.message || "Não foi possível gerar as perguntas. Tente novamente.";
-    if (response?.text) {
-        // FIX: Use response.text directly as per Gemini API guidelines.
-        throw new Error(`Resposta inesperada da IA: ${response.text}`);
-    }
-    throw new Error(message);
+    throw new Error(error.message || "Não foi possível gerar as perguntas.");
   }
 };
 
 const calculateOriginalityScore = async (candidateAnswer: string, baselineAnswer: string, promptTemplate: string): Promise<{ score: number, justification: string }> => {
-    const prompt = generatePrompt(promptTemplate, {
-      candidateAnswer,
-      baselineAnswer
-    });
-
+    const prompt = generatePrompt(promptTemplate, { candidateAnswer, baselineAnswer });
     try {
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: { responseMimeType: 'application/json', responseSchema: originalitySchema }
+        const model = ai.getGenerativeModel({ 
+            model: modelName,
+            generationConfig: { responseMimeType: 'application/json', responseSchema: originalitySchema as any }
         });
-        // FIX: Use response.text directly as per Gemini API guidelines.
-        return JSON.parse(response.text.trim());
+        const response = await model.generateContent(prompt);
+        return JSON.parse(response.response.text().trim());
     } catch (error) {
-        console.error("Erro ao calcular score de originalidade:", error);
-        return { score: 0, justification: "Falha na análise de originalidade." };
+        console.error("Erro originalidade:", error);
+        return { score: 0, justification: "Falha na análise." };
     }
 };
 
@@ -299,8 +283,7 @@ const generateCandidateFeedback = async (
     evaluation: EvaluationResult,
     promptTemplate: string
 ): Promise<string> => {
-    const answersTranscript = answers.map(a => `  - Pergunta: "${a.question}"\n    Resposta: "${a.answer}"`).join('\n\n');
-    
+    const answersTranscript = answers.map(a => ` - Pergunta: "${a.question}"\n Resposta: "${a.answer}"`).join('\n\n');
     const prompt = generatePrompt(promptTemplate, {
       jobTitle: jobDetails.title,
       summary: evaluation.summary,
@@ -310,15 +293,13 @@ const generateCandidateFeedback = async (
     });
 
     try {
-        const response = await ai.models.generateContent({ model, contents: prompt });
-        // FIX: Use response.text directly as per Gemini API guidelines.
-        return response.text.trim();
+        const model = ai.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim();
     } catch (error) {
-        console.error("Erro ao gerar feedback do candidato:", error);
-        return "Não foi possível gerar o feedback para o candidato neste momento.";
+        return "Não foi possível gerar feedback.";
     }
 };
-
 
 export const evaluateAnswers = async (
   jobDetails: JobDetails,
@@ -330,39 +311,27 @@ export const evaluateAnswers = async (
 ): Promise<EvaluationResult> => {
     
   const behavioralQuestions = questions.filter((q): q is BehavioralQuestion => q.type === 'behavioral');
-
   const interviewTranscript = behavioralQuestions.map((q, index) => {
     const userAnswer = answers.find(a => a.question === q.question);
-    const criteriaText = q.criteria.map(c => `- ${c.text} (${c.points} pontos)`).join('\n');
-    return `--- PERGUNTA ${index + 1} ---\nPergunta: ${q.question}\nCritérios de Avaliação:\n${criteriaText}\nResposta do Candidato: ${userAnswer ? userAnswer.answer : 'Sem resposta.'}\n`
+    const criteriaText = q.criteria.map(c => `- ${c.text} (${c.points} pts)`).join('\n');
+    return `--- PERGUNTA ${index + 1} ---\nPergunta: ${q.question}\nCritérios:\n${criteriaText}\nResposta: ${userAnswer ? userAnswer.answer : 'Sem resposta.'}\n`
   }).join('\n');
 
-
-  const promptPlaceholders = {
+  const prompt = generatePrompt(evaluationPromptTemplate, {
     jobTitle: jobDetails.title,
     jobLevel: jobDetails.level,
     jobDescription: jobDetails.description,
     interviewTranscript: interviewTranscript,
-  };
-  
-  const prompt = generatePrompt(evaluationPromptTemplate, promptPlaceholders);
+  });
 
-  // FIX: Declare response outside the try block to make it accessible in the catch block for error reporting.
-  let response: GenerateContentResponse;
   try {
-    response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: { responseMimeType: 'application/json', responseSchema: evaluationSchema },
+    const model = ai.getGenerativeModel({ 
+        model: modelName,
+        generationConfig: { responseMimeType: 'application/json', responseSchema: evaluationSchema as any }
     });
+    const response = await model.generateContent(prompt);
+    const evaluationResult: EvaluationResult = JSON.parse(response.response.text().trim());
 
-    // FIX: Use response.text directly as per Gemini API guidelines.
-    const evaluationResult: EvaluationResult = JSON.parse(response.text.trim());
-    if (!evaluationResult || typeof evaluationResult.globalGrade === 'undefined') {
-        throw new Error('A resposta da IA não continha a estrutura de avaliação esperada.');
-    }
-
-    // Calcular scores de originalidade em paralelo
     const updatedQuestionGrades = await Promise.all(
         evaluationResult.questionGrades.map(async (grade: QuestionGrade) => {
             const questionData = behavioralQuestions.find(q => q.question === grade.question);
@@ -370,31 +339,17 @@ export const evaluateAnswers = async (
 
             if (questionData?.baselineAnswer && userAnswer?.answer) {
                 const originality = await calculateOriginalityScore(userAnswer.answer, questionData.baselineAnswer, originalityPromptTemplate);
-                return {
-                    ...grade,
-                    originalityScore: originality.score,
-                    originalityJustification: originality.justification
-                };
+                return { ...grade, originalityScore: originality.score, originalityJustification: originality.justification };
             }
-            return grade; // Retorna a nota sem o score se algo der errado
+            return grade;
         })
     );
     
     evaluationResult.questionGrades = updatedQuestionGrades;
-    
-    // Gerar feedback para o candidato
     evaluationResult.candidateFeedback = await generateCandidateFeedback(jobDetails, answers, evaluationResult, feedbackPromptTemplate);
-
     return evaluationResult;
-
   } catch (error: any) {
-    console.error("Erro ao avaliar respostas:", error);
-    const message = error.message || "Não foi possível avaliar a entrevista. Tente novamente.";
-    if (response?.text) {
-        // FIX: Use response.text directly as per Gemini API guidelines.
-        throw new Error(`Resposta inesperada da IA: ${response.text}`);
-    }
-    throw new Error(message);
+    throw new Error("Erro na avaliação.");
   }
 };
 
@@ -404,35 +359,24 @@ export const analyzeCv = async (
   promptTemplate: string,
   currentDate: string
 ): Promise<CvEvaluationResult> => {
-  const promptPlaceholders = {
+  const prompt = generatePrompt(promptTemplate, {
     jobTitle: jobDetails.title,
     jobLevel: jobDetails.level,
     jobDescription: jobDetails.description,
     cvText: cvText,
     currentDate: currentDate,
-  };
+  });
 
-  const prompt = generatePrompt(promptTemplate, promptPlaceholders);
-
-  let response: GenerateContentResponse;
   try {
-    response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: { responseMimeType: 'application/json', responseSchema: cvEvaluationSchema },
+    const model = ai.getGenerativeModel({ 
+        model: modelName,
+        generationConfig: { responseMimeType: 'application/json', responseSchema: cvEvaluationSchema as any }
     });
-
-    const cvEvaluationResult: CvEvaluationResult = JSON.parse(response.text.trim());
-    if (!cvEvaluationResult || typeof cvEvaluationResult.matchScore === 'undefined') {
-      throw new Error('A resposta da IA não continha a estrutura de avaliação de CV esperada.');
-    }
-    return cvEvaluationResult;
+    const response = await model.generateContent(prompt);
+    return JSON.parse(response.response.text().trim());
   } catch (error: any) {
-    console.error("Erro ao analisar CV:", error);
-    const message = error.message || "Não foi possível analisar o CV. Tente novamente.";
-    if (response?.text) {
-        throw new Error(`Resposta inesperada da IA: ${response.text}`);
-    }
-    throw new Error(message);
+    throw new Error("Erro ao analisar CV.");
   }
 };
+
+
