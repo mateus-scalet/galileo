@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GoogleGenerativeAI, Modality, LiveServerMessage, Blob } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { UserAnswer, BehavioralQuestion } from '../types';
 import MicIcon from './icons/MicIcon';
 import StopIcon from './icons/StopIcon';
@@ -8,13 +8,12 @@ import LoadingIcon from './icons/LoadingIcon';
 import { useAppContext } from '../contexts/AppContext';
 import ExclamationIcon from './icons/ExclamationIcon';
 
-// Ajuste para o padrão do Vite: import.meta.env
-const ai = new GoogleGenerativeAI(import.meta.env.API_KEY as string);
+// Tenta ler tanto VITE_API_KEY quanto API_KEY para garantir compatibilidade
+const ai = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY || (import.meta.env.API_KEY as string));
 
 const PREP_TIME_SECONDS = 45;
-const RECORD_TIME_SECONDS = 180; // 3 minutes
+const RECORD_TIME_SECONDS = 180;
 
-// --- Funções de áudio ---
 function encode(bytes: Uint8Array): string {
   let binary = '';
   const len = bytes.byteLength;
@@ -24,7 +23,7 @@ function encode(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function createBlob(data: Float32Array): Blob {
+function createBlob(data: Float32Array) {
   const l = data.length;
   const int16 = new Int16Array(l);
   for (let i = 0; i < l; i++) {
@@ -64,20 +63,18 @@ const InterviewScreen: React.FC = () => {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const sessionPromiseRef = useRef<any | null>(null);
+  const sessionRef = useRef<any>(null);
   
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentTranscriptRef = useRef('');
 
   const cleanupPerQuestionResources = useCallback(() => {
     mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-    
     if (audioWorkletNodeRef.current) {
         audioWorkletNodeRef.current.port.onmessage = null;
         audioWorkletNodeRef.current.disconnect();
     }
     sourceNodeRef.current?.disconnect();
-
     mediaStreamRef.current = null;
     sourceNodeRef.current = null;
     audioWorkletNodeRef.current = null;
@@ -114,12 +111,7 @@ const InterviewScreen: React.FC = () => {
   }, []);
 
   const startRecording = useCallback(async () => {
-    if (phase !== 'preparing') return;
-    if (!audioContext) {
-        setMicError("O ambiente de áudio não está pronto.");
-        setPhase('terminated');
-        return;
-    }
+    if (phase !== 'preparing' || !audioContext) return;
 
     setMicError(null);
     currentTranscriptRef.current = '';
@@ -137,8 +129,8 @@ const InterviewScreen: React.FC = () => {
 
       workletNode.port.onmessage = (event) => {
           const pcmBlob = createBlob(event.data);
-          if (sessionPromiseRef.current?.sendRealtimeInput) {
-              sessionPromiseRef.current.sendRealtimeInput({ media: pcmBlob });
+          if (sessionRef.current?.sendRealtimeInput) {
+              sessionRef.current.sendRealtimeInput({ media: pcmBlob });
           }
       };
 
@@ -146,44 +138,41 @@ const InterviewScreen: React.FC = () => {
       workletNode.connect(audioContext.destination);
 
       const currentQuestion = questions[currentQuestionIndex];
-      const systemInstruction = `Você é uma IA de transcrição. Transcreva a resposta do candidato. Vaga: ${interviewKeywords || 'Geral'}. Pergunta: "${currentQuestion.question}"`;
+      const systemInstruction = `Transcreva a resposta. Contexto: ${interviewKeywords}. Pergunta: "${currentQuestion.question}"`;
 
-      // Nota: Certifique-se de que a biblioteca instalada suporte .live.connect 
-      // ou use o método de chat streaming padrão se esta versão for específica.
-      sessionPromiseRef.current = (ai as any).live.connect({
-        model: 'gemini-2.0-flash-exp', // Versão estável recomendada
+      sessionRef.current = (ai as any).live.connect({
+        model: 'gemini-2.0-flash-exp',
         callbacks: {
           onopen: () => startTimer(RECORD_TIME_SECONDS),
-          onmessage: (message: LiveServerMessage) => {
+          onmessage: (message: any) => {
             if (message.serverContent?.inputTranscription) {
               const text = message.serverContent.inputTranscription.text;
               currentTranscriptRef.current += text;
               setTranscript(prev => prev + text);
             }
           },
-          onerror: (e: any) => {
-            cleanupPerQuestionResources();
-            handleFinalizeAnswer();
-          },
           onclose: () => {
             cleanupPerQuestionResources();
             handleFinalizeAnswer();
-          },
+          }
         },
-        config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, systemInstruction },
+        config: { 
+          responseModalities: ["audio"] as any, 
+          inputAudioTranscription: {}, 
+          systemInstruction 
+        },
       });
     } catch (error) {
       setMicError("Erro ao acessar microfone.");
-      cleanupPerQuestionResources();
       setPhase('answered');
     }
   }, [phase, audioContext, cleanupPerQuestionResources, handleFinalizeAnswer, interviewKeywords, startTimer, questions, currentQuestionIndex]);
 
-  const stopRecording = useCallback(async () => {
+  const stopRecording = useCallback(() => {
     if (phase !== 'recording') return;
     setPhase('processing');
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    sessionPromiseRef.current?.close?.();
+    sessionRef.current?.close?.();
   }, [phase]);
 
   useEffect(() => {
@@ -200,9 +189,6 @@ const InterviewScreen: React.FC = () => {
       startTimer(duration);
       remainingTimeRef.current = 0;
     }
-    return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    };
   }, [phase, isFocusModalOpen, startTimer]);
 
   const handleNext = () => {
@@ -224,49 +210,50 @@ const InterviewScreen: React.FC = () => {
   return (
     <div className="w-full max-w-3xl mx-auto p-6 bg-slate-800 rounded-2xl shadow-lg flex flex-col" style={{minHeight: '550px', userSelect: 'none'}}>
       {phase === 'preparing' && (
-        <>
+        <div className="flex flex-col h-full">
           <p className="text-cyan-400 font-semibold mb-2">Pergunta {currentQuestionIndex + 1} de {questions.length}</p>
           <h2 className="text-2xl font-bold mb-6 text-white">{questions[currentQuestionIndex]?.question}</h2>
           <div className="flex-grow flex flex-col items-center justify-center">
             <p className="text-slate-400 mb-2">Tempo de preparação:</p>
             <div className="text-7xl font-bold font-mono text-cyan-400">{formatTime(timer)}</div>
-            <button onClick={startRecording} className="mt-8 bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-6 rounded-lg">
+            <button onClick={startRecording} className="mt-8 bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-6 rounded-lg transition-all">
               Começar Agora
             </button>
           </div>
-        </>
+        </div>
       )}
 
       {(phase === 'recording' || phase === 'processing') && (
-        <>
+        <div className="flex flex-col h-full">
           <h2 className="text-2xl font-bold mb-6 text-white">{questions[currentQuestionIndex]?.question}</h2>
           <div className="bg-slate-900 rounded-lg p-4 min-h-[150px] border border-slate-700 flex-grow">
-            <p className="text-slate-300">{transcript || "Ouvindo..."}</p>
+            <p className="text-slate-300">{transcript || "Ouvindo sua resposta..."}</p>
           </div>
           <div className="mt-6 flex flex-col items-center">
             <div className="text-3xl font-mono text-slate-300 mb-4">{formatTime(timer)}</div>
-            <button onClick={stopRecording} disabled={phase === 'processing'} className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center animate-pulse">
+            <button onClick={stopRecording} disabled={phase === 'processing'} className={`w-16 h-16 rounded-full flex items-center justify-center ${phase === 'recording' ? 'bg-red-600 animate-pulse' : 'bg-slate-600'}`}>
               <StopIcon className="w-8 h-8 text-white"/>
             </button>
           </div>
-        </>
+        </div>
       )}
 
       {phase === 'answered' && (
-        <>
+        <div className="flex flex-col h-full">
           <h2 className="text-2xl font-bold mb-6 text-white">Resposta Registrada</h2>
           <div className="bg-slate-900 rounded-lg p-4 min-h-[150px] border border-slate-700 flex-grow">
             <p className="text-slate-300">{transcript || "(Sem áudio detectado)"}</p>
           </div>
-          <button onClick={handleNext} className="mt-6 w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2">
+          <button onClick={handleNext} className="mt-6 w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-all">
             {currentQuestionIndex < questions.length - 1 ? 'Próxima Pergunta' : 'Finalizar Entrevista'}
             <ArrowRightIcon className="w-5 h-5"/>
           </button>
-        </>
+        </div>
       )}
     </div>
   );
 };
 
 export default InterviewScreen;
+
 
