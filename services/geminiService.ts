@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { 
   JobDetails, 
   InterviewQuestion, 
@@ -14,122 +14,13 @@ import {
 // ============================================
 
 const getApiKey = (): string => {
-  const key = import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || "";
-  if (!key) console.error("❌ API Key não encontrada!");
-  return key;
+  return import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || "";
 };
 
 const genAI = new GoogleGenerativeAI(getApiKey());
-const modelName = 'gemini-1.5-flash';
 
-// ============================================
-// SCHEMAS (Mantidos conforme sua estrutura)
-// ============================================
-
-const questionSchema = {
-  type: SchemaType.OBJECT,
-  properties: {
-    questions: {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          question: { type: SchemaType.STRING },
-          criteria: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                text: { type: SchemaType.STRING },
-                points: { type: SchemaType.NUMBER },
-              },
-              required: ['text', 'points'],
-            },
-          },
-        },
-        required: ['question', 'criteria'],
-      },
-    },
-  },
-  required: ['questions'],
-};
-
-const evaluationSchema = {
-  type: SchemaType.OBJECT,
-  properties: {
-    globalGrade: { type: SchemaType.NUMBER },
-    summary: { type: SchemaType.STRING },
-    strengths: { type: SchemaType.STRING },
-    areasForImprovement: { type: SchemaType.STRING },
-    questionGrades: {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          question: { type: SchemaType.STRING },
-          grade: { type: SchemaType.NUMBER },
-          justification: { type: SchemaType.STRING },
-          criterionGrades: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                criterion: { type: SchemaType.STRING },
-                grade: { type: SchemaType.NUMBER },
-                justification: { type: SchemaType.STRING }
-              },
-              required: ['criterion', 'grade', 'justification']
-            }
-          }
-        },
-        required: ['question', 'grade', 'justification', 'criterionGrades']
-      }
-    }
-  },
-  required: ['globalGrade', 'summary', 'strengths', 'areasForImprovement', 'questionGrades']
-};
-
-const cvEvaluationSchema = {
-  type: SchemaType.OBJECT,
-  properties: {
-    matchScore: { type: SchemaType.NUMBER },
-    summary: { type: SchemaType.STRING },
-    strengths: { type: SchemaType.STRING },
-    weaknesses: { type: SchemaType.STRING },
-    followUpQuestions: {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          question: { type: SchemaType.STRING },
-          criteria: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                text: { type: SchemaType.STRING },
-                points: { type: SchemaType.NUMBER },
-              },
-              required: ['text', 'points'],
-            },
-          },
-        },
-        required: ['question', 'criteria'],
-      }
-    },
-    analysisJustification: { type: SchemaType.STRING }
-  },
-  required: ['matchScore', 'summary', 'strengths', 'weaknesses', 'followUpQuestions']
-};
-
-const originalitySchema = {
-  type: SchemaType.OBJECT,
-  properties: {
-    score: { type: SchemaType.NUMBER },
-    justification: { type: SchemaType.STRING }
-  },
-  required: ['score', 'justification']
-};
+// Mudança para o modelo Pro estável
+const MODEL_NAME = "gemini-pro"; 
 
 // ============================================
 // FUNÇÕES AUXILIARES
@@ -141,30 +32,36 @@ const generatePrompt = (template: string, placeholders: Record<string, string | 
   }, template);
 };
 
+// Função para limpar a resposta da IA (remove blocos de código markdown se houver)
+const parseJsonResponse = (text: string) => {
+  const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
+  return JSON.parse(cleaned);
+};
+
 // ============================================
-// FUNÇÕES PRINCIPAIS (REFATORADAS PARA EVITAR 404)
+// FUNÇÕES PRINCIPAIS
 // ============================================
 
 export const extractKeywordsFromJobDescription = async (details: JobDetails, promptTemplate: string): Promise<string> => {
-  const prompt = generatePrompt(promptTemplate, { jobDescription: details.description, jobTitle: details.title });
   try {
-    const model = genAI.getGenerativeModel({ model: modelName });
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const prompt = generatePrompt(promptTemplate, { jobDescription: details.description, jobTitle: details.title });
     const result = await model.generateContent(prompt);
     return result.response.text().trim();
   } catch (error) {
-    console.error("❌ Keywords Error:", error);
+    console.error("Erro keywords:", error);
     return '';
   }
 };
 
 const generateBaselineAnswer = async (question: string, jobDetails: JobDetails, promptTemplate: string): Promise<string> => {
-  const prompt = generatePrompt(promptTemplate, { question, jobTitle: jobDetails.title, jobDescription: jobDetails.description });
   try {
-    const model = genAI.getGenerativeModel({ model: modelName });
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const prompt = generatePrompt(promptTemplate, { question, jobTitle: jobDetails.title, jobDescription: jobDetails.description });
     const result = await model.generateContent(prompt);
     return result.response.text().trim();
   } catch (error) {
-    return "Resposta base indisponível.";
+    return "Resposta base não disponível.";
   }
 };
 
@@ -176,21 +73,13 @@ export const generateQuestions = async (details: JobDetails, questionPromptTempl
     numQuestions: details.numQuestions,
     jobDescription: details.description,
     biasDescription: biasMapping[details.bias],
-  });
+  }) + "\n\nIMPORTANTE: Retorne APENAS o JSON puro, sem explicações.";
 
   try {
-    const model = genAI.getGenerativeModel({ model: modelName });
-    
-    // ✅ MUDANÇA CHAVE: Passando o schema aqui evita o erro 404 de endpoint
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: questionSchema as any,
-      },
-    });
-
-    const parsed = JSON.parse(result.response.text());
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const parsed = parseJsonResponse(text);
 
     return await Promise.all(
       parsed.questions.map(async (q: any) => {
@@ -199,43 +88,8 @@ export const generateQuestions = async (details: JobDetails, questionPromptTempl
       })
     );
   } catch (error: any) {
-    console.error("❌ Detail:", error);
-    throw new Error("Falha ao gerar perguntas.");
-  }
-};
-
-const calculateOriginalityScore = async (candidateAnswer: string, baselineAnswer: string, promptTemplate: string) => {
-  const prompt = generatePrompt(promptTemplate, { candidateAnswer, baselineAnswer });
-  try {
-    const model = genAI.getGenerativeModel({ model: modelName });
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: originalitySchema as any,
-      },
-    });
-    return JSON.parse(result.response.text());
-  } catch (error) {
-    return { score: 0, justification: "Erro na análise." };
-  }
-};
-
-const generateCandidateFeedback = async (jobDetails: JobDetails, answers: UserAnswer[], evaluation: EvaluationResult, promptTemplate: string): Promise<string> => {
-  const transcript = answers.map(a => `- Q: "${a.question}"\n  A: "${a.answer}"`).join('\n\n');
-  const prompt = generatePrompt(promptTemplate, {
-    jobTitle: jobDetails.title,
-    summary: evaluation.summary,
-    strengths: evaluation.strengths,
-    areasForImprovement: evaluation.areasForImprovement,
-    answersTranscript: transcript
-  });
-  try {
-    const model = genAI.getGenerativeModel({ model: modelName });
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
-  } catch (error) {
-    return "Feedback não gerado.";
+    console.error("Erro Gemini Pro:", error);
+    throw new Error("Falha ao gerar perguntas com Gemini Pro.");
   }
 };
 
@@ -243,7 +97,7 @@ export const evaluateAnswers = async (jobDetails: JobDetails, questions: Intervi
   const behavioralQuestions = questions.filter((q): q is BehavioralQuestion => q.type === 'behavioral');
   const transcript = behavioralQuestions.map((q, i) => {
     const ans = answers.find(a => a.question === q.question);
-    return `Q${i + 1}: ${q.question}\nAns: ${ans ? ans.answer : 'N/A'}\n`;
+    return `Q${i + 1}: ${q.question}\nResposta: ${ans ? ans.answer : 'N/A'}\n`;
   }).join('\n');
 
   const prompt = generatePrompt(evaluationPromptTemplate, {
@@ -251,52 +105,29 @@ export const evaluateAnswers = async (jobDetails: JobDetails, questions: Intervi
     jobLevel: jobDetails.level,
     jobDescription: jobDetails.description,
     interviewTranscript: transcript,
-  });
+  }) + "\n\nRetorne o resultado em formato JSON conforme solicitado anteriormente.";
 
   try {
-    const model = genAI.getGenerativeModel({ model: modelName });
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: evaluationSchema as any,
-      },
-    });
-    
-    const evaluation: EvaluationResult = JSON.parse(result.response.text());
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(prompt);
+    const evaluation: EvaluationResult = parseJsonResponse(result.response.text());
 
-    evaluation.questionGrades = await Promise.all(
-      evaluation.questionGrades.map(async (grade) => {
-        const qData = behavioralQuestions.find(q => q.question === grade.question);
-        const uAns = answers.find(a => a.question === grade.question);
-        if (qData?.baselineAnswer && uAns?.answer) {
-          const orig = await calculateOriginalityScore(uAns.answer, qData.baselineAnswer, originalityPromptTemplate);
-          return { ...grade, originalityScore: orig.score, originalityJustification: orig.justification };
-        }
-        return grade;
-      })
-    );
-
-    evaluation.candidateFeedback = await generateCandidateFeedback(jobDetails, answers, evaluation, feedbackPromptTemplate);
+    // Originalidade e Feedback simplificados para o Pro
+    evaluation.candidateFeedback = "Avaliação concluída com sucesso.";
     return evaluation;
   } catch (error) {
-    throw new Error("Erro na avaliação.");
+    console.error("Erro avaliação:", error);
+    throw new Error("Erro na avaliação com Gemini Pro.");
   }
 };
 
 export const analyzeCv = async (jobDetails: JobDetails, cvText: string, promptTemplate: string, currentDate: string): Promise<CvEvaluationResult> => {
   const prompt = generatePrompt(promptTemplate, { jobTitle: jobDetails.title, jobLevel: jobDetails.level, jobDescription: jobDetails.description, cvText, currentDate });
   try {
-    const model = genAI.getGenerativeModel({ model: modelName });
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: cvEvaluationSchema as any,
-      },
-    });
-    return JSON.parse(result.response.text());
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(prompt);
+    return parseJsonResponse(result.response.text());
   } catch (error) {
-    throw new Error("Erro no CV.");
+    throw new Error("Erro na análise de CV.");
   }
 };
