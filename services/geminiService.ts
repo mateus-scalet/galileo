@@ -1,10 +1,12 @@
-import { GoogleGenerativeAI, SchemaType, GenerateContentResponse } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { JobDetails, InterviewQuestion, UserAnswer, EvaluationResult, QuestionGrade, BehavioralQuestion, CvEvaluationResult } from '../types';
 
-// Ajuste para o padrão do Vite para ler variáveis de ambiente
-const ai = new GoogleGenerativeAI(import.meta.env.API_KEY as string);
+// O segredo está em garantir que o Vite leia a VITE_API_KEY
+const getApiKey = () => {
+  return import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || "";
+};
 
-// Usando o modelo estável mais recente
+const ai = new GoogleGenerativeAI(getApiKey());
 const modelName = 'gemini-1.5-flash';
 
 const questionSchema = {
@@ -12,28 +14,17 @@ const questionSchema = {
   properties: {
     questions: {
       type: SchemaType.ARRAY,
-      description: 'A lista de perguntas da entrevista.',
       items: {
         type: SchemaType.OBJECT,
         properties: {
-          question: {
-            type: SchemaType.STRING,
-            description: 'A pergunta a ser feita ao candidato.',
-          },
+          question: { type: SchemaType.STRING },
           criteria: {
             type: SchemaType.ARRAY,
-            description: 'Os critérios para avaliar a resposta. A soma dos pontos deve ser 10.',
             items: {
               type: SchemaType.OBJECT,
               properties: {
-                text: {
-                  type: SchemaType.STRING,
-                  description: 'A descrição do critério de avaliação.',
-                },
-                points: {
-                  type: SchemaType.NUMBER,
-                  description: 'O peso do critério, de 1 a 10.',
-                },
+                text: { type: SchemaType.STRING },
+                points: { type: SchemaType.NUMBER },
               },
               required: ['text', 'points'],
             },
@@ -49,58 +40,26 @@ const questionSchema = {
 const evaluationSchema = {
     type: SchemaType.OBJECT,
     properties: {
-        globalGrade: {
-            type: SchemaType.NUMBER,
-            description: 'Uma nota global de 0 a 10 para o candidato, com uma casa decimal.'
-        },
-        summary: {
-            type: SchemaType.STRING,
-            description: 'Um resumo conciso da performance do candidato na entrevista.'
-        },
-        strengths: {
-            type: SchemaType.STRING,
-            description: 'Os principais pontos fortes do candidato, listados em bullet points (usando "- ").'
-        },
-        areasForImprovement: {
-            type: SchemaType.STRING,
-            description: 'As principais áreas para melhoria do candidato, listadas em bullet points (usando "- ").'
-        },
+        globalGrade: { type: SchemaType.NUMBER },
+        summary: { type: SchemaType.STRING },
+        strengths: { type: SchemaType.STRING },
+        areasForImprovement: { type: SchemaType.STRING },
         questionGrades: {
             type: SchemaType.ARRAY,
-            description: 'A avaliação detalhada para cada pergunta.',
             items: {
                 type: SchemaType.OBJECT,
                 properties: {
-                    question: {
-                        type: SchemaType.STRING,
-                        description: 'A pergunta que foi avaliada.'
-                    },
-                    grade: {
-                        type: SchemaType.NUMBER,
-                        description: 'A nota de 0 a 10 para a resposta desta pergunta.'
-                    },
-                    justification: {
-                        type: SchemaType.STRING,
-                        description: 'A justificativa para a nota da pergunta.'
-                    },
+                    question: { type: SchemaType.STRING },
+                    grade: { type: SchemaType.NUMBER },
+                    justification: { type: SchemaType.STRING },
                     criterionGrades: {
                       type: SchemaType.ARRAY,
-                      description: 'A avaliação detalhada para cada critério da pergunta.',
                       items: {
                         type: SchemaType.OBJECT,
                         properties: {
-                          criterion: {
-                            type: SchemaType.STRING,
-                            description: 'O critério que foi avaliado.'
-                          },
-                          grade: {
-                            type: SchemaType.NUMBER,
-                            description: 'A nota de 0 a 10 para este critério específico.'
-                          },
-                          justification: {
-                            type: SchemaType.STRING,
-                            description: 'A justificativa para a nota do critério.'
-                          }
+                          criterion: { type: SchemaType.STRING },
+                          grade: { type: SchemaType.NUMBER },
+                          justification: { type: SchemaType.STRING }
                         },
                         required: ['criterion', 'grade', 'justification']
                       }
@@ -116,40 +75,23 @@ const evaluationSchema = {
 const cvEvaluationSchema = {
     type: SchemaType.OBJECT,
     properties: {
-        matchScore: {
-            type: SchemaType.NUMBER,
-            description: 'Uma nota de 0 a 10 indicando o alinhamento do CV com a vaga, com uma casa decimal.'
-        },
-        summary: {
-            type: SchemaType.STRING,
-            description: 'Um resumo conciso da adequação do candidato à vaga com base no CV.'
-        },
-        strengths: {
-            type: SchemaType.STRING,
-            description: 'Os principais pontos de alinhamento do CV com os requisitos da vaga, em bullet points (usando "- ").'
-        },
-        weaknesses: {
-            type: SchemaType.STRING,
-            description: 'Os principais pontos de desalinhamento ou requisitos importantes não encontrados no CV, em bullet points (usando "- ").'
-        },
+        matchScore: { type: SchemaType.NUMBER },
+        summary: { type: SchemaType.STRING },
+        strengths: { type: SchemaType.STRING },
+        weaknesses: { type: SchemaType.STRING },
         followUpQuestions: {
             type: SchemaType.ARRAY,
-            description: 'Uma lista de perguntas de aprofundamento para a entrevista. Se nenhuma pergunta for necessária, retorne um array vazio.',
             items: {
                 type: SchemaType.OBJECT,
                 properties: {
-                    question: {
-                        type: SchemaType.STRING,
-                        description: 'A pergunta a ser feita ao candidato para esclarecer um ponto do CV.',
-                    },
+                    question: { type: SchemaType.STRING },
                     criteria: {
                         type: SchemaType.ARRAY,
-                        description: 'Os 3 critérios para avaliar a resposta. A soma dos pontos deve ser exatamente 10.',
                         items: {
                             type: SchemaType.OBJECT,
                             properties: {
-                                text: { type: SchemaType.STRING, description: 'A descrição do critério.' },
-                                points: { type: SchemaType.NUMBER, description: 'O peso do critério.' },
+                                text: { type: SchemaType.STRING },
+                                points: { type: SchemaType.NUMBER },
                             },
                             required: ['text', 'points'],
                         },
@@ -158,10 +100,7 @@ const cvEvaluationSchema = {
                 required: ['question', 'criteria'],
             }
         },
-        analysisJustification: {
-          type: SchemaType.STRING,
-          description: "Uma justificativa se nenhuma pergunta de aprofundamento for gerada."
-        }
+        analysisJustification: { type: SchemaType.STRING }
     },
     required: ['matchScore', 'summary', 'strengths', 'weaknesses', 'followUpQuestions']
 };
@@ -169,14 +108,8 @@ const cvEvaluationSchema = {
 const originalitySchema = {
     type: SchemaType.OBJECT,
     properties: {
-        score: {
-            type: SchemaType.NUMBER,
-            description: 'O score de similaridade de 0 a 100.'
-        },
-        justification: {
-            type: SchemaType.STRING,
-            description: 'Uma breve justificativa.'
-        }
+        score: { type: SchemaType.NUMBER },
+        justification: { type: SchemaType.STRING }
     },
     required: ['score', 'justification']
 };
@@ -188,81 +121,56 @@ const generatePrompt = (template: string, placeholders: Record<string, string | 
 };
 
 export const extractKeywordsFromJobDescription = async (details: JobDetails, promptTemplate: string): Promise<string> => {
-    const prompt = generatePrompt(promptTemplate, { 
-      jobDescription: details.description,
-      jobTitle: details.title
-    });
-
+    const prompt = generatePrompt(promptTemplate, { jobDescription: details.description, jobTitle: details.title });
     try {
         const model = ai.getGenerativeModel({ model: modelName });
         const result = await model.generateContent(prompt);
         return result.response.text().trim();
     } catch (error) {
-        console.error("Erro ao extrair palavras-chave:", error);
+        console.error("Erro keywords:", error);
         return '';
     }
 }
 
 const generateBaselineAnswer = async (question: string, jobDetails: JobDetails, promptTemplate: string): Promise<string> => {
-    const prompt = generatePrompt(promptTemplate, {
-      question: question,
-      jobTitle: jobDetails.title,
-      jobDescription: jobDetails.description
-    });
+    const prompt = generatePrompt(promptTemplate, { question, jobTitle: jobDetails.title, jobDescription: jobDetails.description });
     try {
         const model = ai.getGenerativeModel({ model: modelName });
         const result = await model.generateContent(prompt);
         return result.response.text().trim();
     } catch (error) {
-        console.error(`Erro ao gerar resposta base`, error);
-        return "Não foi possível gerar uma resposta base.";
+        return "Não foi possível gerar resposta base.";
     }
 };
 
-export const generateQuestions = async (
-  details: JobDetails,
-  questionPromptTemplate: string,
-  baselineAnswerPromptTemplate: string
-): Promise<BehavioralQuestion[]> => {
+export const generateQuestions = async (details: JobDetails, questionPromptTemplate: string, baselineAnswerPromptTemplate: string): Promise<BehavioralQuestion[]> => {
   const biasMapping = ['muito técnico', 'técnico', 'equilibrado', 'comportamental', 'muito comportamental'];
-  const promptPlaceholders = {
+  const prompt = generatePrompt(questionPromptTemplate, {
     jobTitle: details.title,
     jobLevel: details.level,
     numQuestions: details.numQuestions,
     jobDescription: details.description,
     biasDescription: biasMapping[details.bias],
-  };
-
-  const prompt = generatePrompt(questionPromptTemplate, promptPlaceholders);
+  });
   
   try {
     const model = ai.getGenerativeModel({ 
         model: modelName,
         generationConfig: { responseMimeType: 'application/json', responseSchema: questionSchema as any }
     });
-    
     const response = await model.generateContent(prompt);
-    const result = JSON.parse(response.response.text().trim());
+    const result = JSON.parse(response.response.text());
     
-    if (!result || !result.questions) {
-      throw new Error('Estrutura de "perguntas" não encontrada.');
-    }
-    
-    const questionsWithBaselines = await Promise.all(
-        result.questions.map(async (q: any) => {
-            const baselineAnswer = await generateBaselineAnswer(q.question, details, baselineAnswerPromptTemplate);
-            return { ...q, baselineAnswer, type: 'behavioral' as const };
-        })
-    );
-    
-    return questionsWithBaselines;
+    return await Promise.all(result.questions.map(async (q: any) => {
+        const baselineAnswer = await generateBaselineAnswer(q.question, details, baselineAnswerPromptTemplate);
+        return { ...q, baselineAnswer, type: 'behavioral' as const };
+    }));
   } catch (error: any) {
-    console.error("Erro ao gerar perguntas:", error);
-    throw new Error(error.message || "Não foi possível gerar as perguntas.");
+    throw new Error("Erro ao gerar perguntas.");
   }
 };
 
-const calculateOriginalityScore = async (candidateAnswer: string, baselineAnswer: string, promptTemplate: string): Promise<{ score: number, justification: string }> => {
+const calculateOriginalityScore = async (candidateAnswer: string, baselineAnswer: string, promptTemplate: string) => {
     const prompt = generatePrompt(promptTemplate, { candidateAnswer, baselineAnswer });
     try {
         const model = ai.getGenerativeModel({ 
@@ -270,19 +178,13 @@ const calculateOriginalityScore = async (candidateAnswer: string, baselineAnswer
             generationConfig: { responseMimeType: 'application/json', responseSchema: originalitySchema as any }
         });
         const response = await model.generateContent(prompt);
-        return JSON.parse(response.response.text().trim());
+        return JSON.parse(response.response.text());
     } catch (error) {
-        console.error("Erro originalidade:", error);
         return { score: 0, justification: "Falha na análise." };
     }
 };
 
-const generateCandidateFeedback = async (
-    jobDetails: JobDetails,
-    answers: UserAnswer[],
-    evaluation: EvaluationResult,
-    promptTemplate: string
-): Promise<string> => {
+const generateCandidateFeedback = async (jobDetails: JobDetails, answers: UserAnswer[], evaluation: EvaluationResult, promptTemplate: string) => {
     const answersTranscript = answers.map(a => ` - Pergunta: "${a.question}"\n Resposta: "${a.answer}"`).join('\n\n');
     const prompt = generatePrompt(promptTemplate, {
       jobTitle: jobDetails.title,
@@ -291,37 +193,27 @@ const generateCandidateFeedback = async (
       areasForImprovement: evaluation.areasForImprovement,
       answersTranscript: answersTranscript
     });
-
     try {
         const model = ai.getGenerativeModel({ model: modelName });
         const result = await model.generateContent(prompt);
         return result.response.text().trim();
     } catch (error) {
-        return "Não foi possível gerar feedback.";
+        return "Sem feedback.";
     }
 };
 
-export const evaluateAnswers = async (
-  jobDetails: JobDetails,
-  questions: InterviewQuestion[],
-  answers: UserAnswer[],
-  evaluationPromptTemplate: string,
-  originalityPromptTemplate: string,
-  feedbackPromptTemplate: string,
-): Promise<EvaluationResult> => {
-    
+export const evaluateAnswers = async (jobDetails: JobDetails, questions: InterviewQuestion[], answers: UserAnswer[], evaluationPromptTemplate: string, originalityPromptTemplate: string, feedbackPromptTemplate: string): Promise<EvaluationResult> => {
   const behavioralQuestions = questions.filter((q): q is BehavioralQuestion => q.type === 'behavioral');
-  const interviewTranscript = behavioralQuestions.map((q, index) => {
-    const userAnswer = answers.find(a => a.question === q.question);
-    const criteriaText = q.criteria.map(c => `- ${c.text} (${c.points} pts)`).join('\n');
-    return `--- PERGUNTA ${index + 1} ---\nPergunta: ${q.question}\nCritérios:\n${criteriaText}\nResposta: ${userAnswer ? userAnswer.answer : 'Sem resposta.'}\n`
+  const transcript = behavioralQuestions.map((q, i) => {
+    const ans = answers.find(a => a.question === q.question);
+    return `Q${i+1}: ${q.question}\nAns: ${ans ? ans.answer : 'N/A'}\n`;
   }).join('\n');
 
   const prompt = generatePrompt(evaluationPromptTemplate, {
     jobTitle: jobDetails.title,
     jobLevel: jobDetails.level,
     jobDescription: jobDetails.description,
-    interviewTranscript: interviewTranscript,
+    interviewTranscript: transcript,
   });
 
   try {
@@ -330,53 +222,36 @@ export const evaluateAnswers = async (
         generationConfig: { responseMimeType: 'application/json', responseSchema: evaluationSchema as any }
     });
     const response = await model.generateContent(prompt);
-    const evaluationResult: EvaluationResult = JSON.parse(response.response.text().trim());
+    const result: EvaluationResult = JSON.parse(response.response.text());
 
-    const updatedQuestionGrades = await Promise.all(
-        evaluationResult.questionGrades.map(async (grade: QuestionGrade) => {
-            const questionData = behavioralQuestions.find(q => q.question === grade.question);
-            const userAnswer = answers.find(a => a.question === grade.question);
-
-            if (questionData?.baselineAnswer && userAnswer?.answer) {
-                const originality = await calculateOriginalityScore(userAnswer.answer, questionData.baselineAnswer, originalityPromptTemplate);
-                return { ...grade, originalityScore: originality.score, originalityJustification: originality.justification };
-            }
-            return grade;
-        })
-    );
+    result.questionGrades = await Promise.all(result.questionGrades.map(async (grade) => {
+        const qData = behavioralQuestions.find(q => q.question === grade.question);
+        const uAns = answers.find(a => a.question === grade.question);
+        if (qData?.baselineAnswer && uAns?.answer) {
+            const orig = await calculateOriginalityScore(uAns.answer, qData.baselineAnswer, originalityPromptTemplate);
+            return { ...grade, originalityScore: orig.score, originalityJustification: orig.justification };
+        }
+        return grade;
+    }));
     
-    evaluationResult.questionGrades = updatedQuestionGrades;
-    evaluationResult.candidateFeedback = await generateCandidateFeedback(jobDetails, answers, evaluationResult, feedbackPromptTemplate);
-    return evaluationResult;
+    result.candidateFeedback = await generateCandidateFeedback(jobDetails, answers, result, feedbackPromptTemplate);
+    return result;
   } catch (error: any) {
-    throw new Error("Erro na avaliação.");
+    throw new Error("Erro avaliação.");
   }
 };
 
-export const analyzeCv = async (
-  jobDetails: JobDetails,
-  cvText: string,
-  promptTemplate: string,
-  currentDate: string
-): Promise<CvEvaluationResult> => {
-  const prompt = generatePrompt(promptTemplate, {
-    jobTitle: jobDetails.title,
-    jobLevel: jobDetails.level,
-    jobDescription: jobDetails.description,
-    cvText: cvText,
-    currentDate: currentDate,
-  });
-
+export const analyzeCv = async (jobDetails: JobDetails, cvText: string, promptTemplate: string, currentDate: string): Promise<CvEvaluationResult> => {
+  const prompt = generatePrompt(promptTemplate, { jobTitle: jobDetails.title, jobLevel: jobDetails.level, jobDescription: jobDetails.description, cvText, currentDate });
   try {
     const model = ai.getGenerativeModel({ 
         model: modelName,
         generationConfig: { responseMimeType: 'application/json', responseSchema: cvEvaluationSchema as any }
     });
     const response = await model.generateContent(prompt);
-    return JSON.parse(response.response.text().trim());
+    return JSON.parse(response.response.text());
   } catch (error: any) {
-    throw new Error("Erro ao analisar CV.");
+    throw new Error("Erro CV.");
   }
 };
-
 
