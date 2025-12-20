@@ -7,7 +7,7 @@ const getApiKey = () => {
 };
 
 const ai = new GoogleGenerativeAI(getApiKey());
-const modelName = 'gemini-1.5-flash';
+const modelName = 'gemini-1.5-flash-latest';
 
 const questionSchema = {
   type: SchemaType.OBJECT,
