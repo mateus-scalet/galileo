@@ -1,12 +1,14 @@
 {
-"name": "ai-interviewer",
-  
-"version": "1.0.0",
+  "name": "ai-interviewer",
+  "version": "1.0.0",
+  "homepage": "https://mateus-scalet.github.io/galileo/",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
