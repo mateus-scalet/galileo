@@ -1,177 +1,89 @@
-import {
-  JobDetails,
-  InterviewQuestion,
-  UserAnswer,
-  EvaluationResult,
-  BehavioralQuestion,
-  CvEvaluationResult,
-} from "../types";
-
-// ============================================
-// FUNÇÕES AUXILIARES
-// ============================================
-
-const generatePrompt = (
-  template: string,
-  placeholders: Record<string, string | number>
-): string => {
-  return Object.entries(placeholders).reduce((acc, [key, value]) => {
-    return acc.replace(new RegExp(`{${key}}`, "g"), String(value));
-  }, template);
+export const config = {
+  runtime: "edge",
 };
 
-// Remove blocos ```json ... ``` e tenta extrair o primeiro JSON válido do texto
-const parseJsonResponse = (text: string) => {
-  const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+const MODEL = "models/gemini-flash-latest";
 
-  // tentativa 1: parse direto
+export default async function handler(req: Request) {
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({
+        error: "Missing GEMINI_API_KEY",
+        details: "Configure GEMINI_API_KEY no Vercel (Production) e faça redeploy.",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   try {
-    return JSON.parse(cleaned);
-  } catch {}
+    const body = await req.json();
+    const prompt = body?.prompt;
 
-  // tentativa 2: extrair do primeiro "{" ao último "}"
-  const first = cleaned.indexOf("{");
-  const last = cleaned.lastIndexOf("}");
-  if (first !== -1 && last !== -1 && last > first) {
-    const slice = cleaned.slice(first, last + 1);
-    return JSON.parse(slice);
-  }
+    if (!prompt || typeof prompt !== "string") {
+      return new Response(JSON.stringify({ error: "Prompt is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-  throw new Error("Resposta não contém JSON válido.");
-};
+    const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${encodeURIComponent(
+      apiKey
+    )}`;
 
-// ============================================
-// CLIENTE DE API (BACKEND)
-// ============================================
+    const payload = {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+    };
 
-const callGeminiApi = async (prompt: string): Promise<{ text: string }> => {
-  const response = await fetch("/api/gemini", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
-  });
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Erro Gemini API: ${errorText}`);
-  }
+    const dataText = await r.text();
 
-  return response.json();
-};
-
-// ============================================
-// FUNÇÕES PRINCIPAIS
-// ============================================
-
-export const extractKeywordsFromJobDescription = async (
-  details: JobDetails,
-  promptTemplate: string
-): Promise<string> => {
-  const prompt = generatePrompt(promptTemplate, {
-    jobDescription: details.description,
-    jobTitle: details.title,
-  });
-
-  const result = await callGeminiApi(prompt);
-  return result.text.trim();
-};
-
-const generateBaselineAnswer = async (
-  question: string,
-  jobDetails: JobDetails,
-  promptTemplate: string
-): Promise<string> => {
-  const prompt = generatePrompt(promptTemplate, {
-    question,
-    jobTitle: jobDetails.title,
-    jobDescription: jobDetails.description,
-  });
-
-  const result = await callGeminiApi(prompt);
-  return result.text.trim();
-};
-
-export const generateQuestions = async (
-  details: JobDetails,
-  questionPromptTemplate: string,
-  baselineAnswerPromptTemplate: string
-): Promise<BehavioralQuestion[]> => {
-  const biasMapping = [
-    "muito técnico",
-    "técnico",
-    "equilibrado",
-    "comportamental",
-    "muito comportamental",
-  ];
-
-  const prompt =
-    generatePrompt(questionPromptTemplate, {
-      jobTitle: details.title,
-      jobLevel: details.level,
-      numQuestions: details.numQuestions,
-      jobDescription: details.description,
-      biasDescription: biasMapping[details.bias],
-    }) + "\n\nIMPORTANTE: Retorne APENAS JSON puro (sem ```).";
-
-  const result = await callGeminiApi(prompt);
-  const parsed = parseJsonResponse(result.text);
-
-  return Promise.all(
-    parsed.questions.map(async (q: any) => {
-      const baselineAnswer = await generateBaselineAnswer(
-        q.question,
-        details,
-        baselineAnswerPromptTemplate
+    if (!r.ok) {
+      return new Response(
+        JSON.stringify({
+          error: "Erro ao chamar Gemini",
+          status: r.status,
+          details: dataText,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
       );
-      return { ...q, baselineAnswer, type: "behavioral" as const };
-    })
-  );
-};
+    }
 
-export const evaluateAnswers = async (
-  jobDetails: JobDetails,
-  questions: InterviewQuestion[],
-  answers: UserAnswer[],
-  evaluationPromptTemplate: string
-): Promise<EvaluationResult> => {
-  const behavioralQuestions = questions.filter(
-    (q): q is BehavioralQuestion => q.type === "behavioral"
-  );
+    const data = JSON.parse(dataText);
 
-  const transcript = behavioralQuestions
-    .map((q, i) => {
-      const ans = answers.find((a) => a.question === q.question);
-      return `Q${i + 1}: ${q.question}\nResposta: ${ans ? ans.answer : "N/A"}\n`;
-    })
-    .join("\n");
+    const text =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p: any) => p?.text || "")
+        .join("") || "";
 
-  const prompt =
-    generatePrompt(evaluationPromptTemplate, {
-      jobTitle: jobDetails.title,
-      jobLevel: jobDetails.level,
-      jobDescription: jobDetails.description,
-      interviewTranscript: transcript,
-    }) + "\n\nRetorne APENAS JSON puro (sem ```).";
-
-  const result = await callGeminiApi(prompt);
-  return parseJsonResponse(result.text) as EvaluationResult;
-};
-
-export const analyzeCv = async (
-  jobDetails: JobDetails,
-  cvText: string,
-  promptTemplate: string,
-  currentDate: string
-): Promise<CvEvaluationResult> => {
-  const prompt =
-    generatePrompt(promptTemplate, {
-      jobTitle: jobDetails.title,
-      jobLevel: jobDetails.level,
-      jobDescription: jobDetails.description,
-      cvText,
-      currentDate,
-    }) + "\n\nRetorne APENAS JSON puro (sem ```).";
-
-  const result = await callGeminiApi(prompt);
-  return parseJsonResponse(result.text) as CvEvaluationResult;
-};
+    return new Response(JSON.stringify({ text, model: MODEL }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error: any) {
+    return new Response(
+      JSON.stringify({
+        error: "FUNCTION_INVOCATION_FAILED",
+        details: error?.message || String(error),
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
