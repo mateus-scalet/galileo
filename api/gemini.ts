@@ -6,12 +6,11 @@ export default async function handler(req: any, res: any) {
   }
 
   const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-
   if (!apiKey) {
     return res.status(500).json({
       error: "Missing GEMINI_API_KEY",
       details:
-        "A variável GEMINI_API_KEY não está disponível neste deploy (Production/Preview). Verifique Environment Variables e faça redeploy.",
+        "A variável GEMINI_API_KEY não está disponível neste deploy. Verifique Environment Variables e faça redeploy.",
     });
   }
 
@@ -22,7 +21,9 @@ export default async function handler(req: any, res: any) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+    // Modelo recomendado e amplamente suportado para generateContent
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const result = await model.generateContent(prompt);
     return res.status(200).json({ text: result.response.text() });
