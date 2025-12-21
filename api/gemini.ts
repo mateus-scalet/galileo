@@ -5,20 +5,27 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  try {
-    const { prompt } = req.body;
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
 
-    if (!prompt) {
+  if (!apiKey) {
+    return res.status(500).json({
+      error: "Missing GEMINI_API_KEY",
+      details:
+        "A variável GEMINI_API_KEY não está disponível neste deploy (Production/Preview). Verifique Environment Variables e faça redeploy.",
+    });
+  }
+
+  try {
+    const { prompt } = req.body || {};
+    if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
     const result = await model.generateContent(prompt);
-    const text = result.response.text();
-
-    return res.status(200).json({ text });
+    return res.status(200).json({ text: result.response.text() });
   } catch (error: any) {
     console.error("Erro Gemini API:", error);
     return res.status(500).json({
