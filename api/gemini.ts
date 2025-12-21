@@ -1,5 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const DEFAULT_MODEL = "models/gemini-flash-latest";
+
 export default async function handler(req: any, res: any) {
   const apiKey = (process.env.GEMINI_API_KEY || "").trim();
   if (!apiKey) {
@@ -10,28 +12,16 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  // ✅ LISTAR MODELOS (via REST)
-  // GET /api/gemini?listModels=1
+  // (opcional) manter o listModels pra debug
   if (req.method === "GET" && req.query?.listModels === "1") {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
         apiKey
       )}`;
-
-      const r = await fetch(url, { method: "GET" });
+      const r = await fetch(url);
       const text = await r.text();
-
-      if (!r.ok) {
-        return res.status(r.status).json({
-          error: "Erro ao listar modelos",
-          details: text,
-        });
-      }
-
-      // retorna JSON bruto do Google (contém "models")
-      return res.status(200).send(text);
+      return res.status(r.ok ? 200 : r.status).send(text);
     } catch (error: any) {
-      console.error("Erro list models:", error);
       return res.status(500).json({
         error: "Erro ao listar modelos",
         details: error?.message || "Erro desconhecido",
@@ -39,31 +29,23 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // ✅ CHAMAR GEMINI
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const { prompt, model: modelFromBody } = req.body || {};
+    const { prompt } = req.body || {};
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    // Você pode mandar model no body OU setar GEMINI_MODEL no Vercel.
-    // Vamos deixar um fallback, mas você vai trocar depois de ver a lista.
-    const modelName =
-      (typeof modelFromBody === "string" && modelFromBody.trim()) ||
-      (process.env.GEMINI_MODEL || "").trim() ||
-      "models/gemini-1.5-flash";
-
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    // OBS: algumas listas retornam nomes no formato "models/xxxxx"
-    const model = genAI.getGenerativeModel({ model: modelName });
+    // ✅ fixado no modelo disponível no seu projeto
+    const model = genAI.getGenerativeModel({ model: DEFAULT_MODEL });
 
     const result = await model.generateContent(prompt);
-    return res.status(200).json({ text: result.response.text(), model: modelName });
+    return res.status(200).json({ text: result.response.text(), model: DEFAULT_MODEL });
   } catch (error: any) {
     console.error("Erro Gemini API:", error);
     return res.status(500).json({
