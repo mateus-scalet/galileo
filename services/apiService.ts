@@ -12,71 +12,123 @@ const DATA_KEY = 'galileo-data';
 import { getInitialVacancies } from '../initialData';
 
 const defaultPrompts: PromptSettings = {
-    questionGeneration: {
-      id: 'questionGeneration',
-      name: 'Geração de Perguntas',
-      description: 'Usado para criar perguntas e critérios de avaliação com base na descrição da vaga.',
-      template: `
-##SEU PAPEL
+  questionGeneration: {
+    id: 'questionGeneration',
+    name: 'Geração de Perguntas',
+    description: 'Usado para criar perguntas e critérios de avaliação com base na descrição da vaga.',
+    template: `
 Você é um gerente de RH com ampla experiência em recrutamento e condução de entrevistas.
 
-##CONTEXTO
-Voocê deve entrevistar candidatos para o cargo de {jobTitle}, de nível {jobLevel}.
-Abaixo está a descrição completa da vaga, incluindo responsabilidades e requisitos:: 
-"{jobDescription}".
+CONTEXTO
+Você deve entrevistar candidatos para o cargo de {jobTitle}, de nível {jobLevel}.
+Descrição da vaga:
+{jobDescription}
 
-##AÇÃO
+TAREFA
 Crie {numQuestions} perguntas de entrevista específicas para o cargo de {jobTitle}.
 O foco da entrevista deve ser {biasDescription}.
 As perguntas devem estar diretamente relacionadas às responsabilidades e requisitos do cargo.
 Cada pergunta deve solicitar que o candidato descreva uma situação real em que demonstrou uma habilidade, conhecimento ou comportamento relevante.
+
 Para cada pergunta, gere também:
-3 critérios de avaliação claros, objetivos e mensuráveis.
-A pontuação total dos critérios deve somar exatamente 10 pontos.
-Cada critério deve especificar o que o candidato precisa demonstrar para atingir aquela pontuação.
- 
-##FORMATO DO OUTPUT
-Retorne um JSON com uma chave "questions", contendo um array de objetos. Cada objeto deve ter "question" (a pergunta) e "criteria" (um array de objetos com "text" e "points").
+- 3 critérios de avaliação claros, objetivos e mensuráveis.
+- A pontuação total dos critérios deve somar exatamente 10 pontos.
+- Cada critério deve especificar o que o candidato precisa demonstrar.
 
-##EXEMPLOS
-Abaixo, como exemplo, seguem pergunta e critérios para o cargo de Associate Product Manager em um marketplace:
-Pergunta 1: "Conte sobre uma situação em que você precisou identificar e priorizar melhorias em um sistema ou processo logístico para reduzir custos ou tempo de entrega. Como realizou o diagnóstico do problema, envolveu as equipes e tomou decisões sobre o que desenvolver primeiro?"
-Critérios Pergunta 1: 
-"Demonstra capacidade de analisar dados e feedbacks para identificar oportunidades de melhoria com base em métricas claras (ex.: tempo de entrega, custo operacional)." 4 pontos.
-"Mostra raciocínio estruturado para definir prioridades entre diferentes iniciativas, considerando impacto no negócio, esforço técnico e necessidades dos usuários." 3 pontos
-"Descreve como coordenou times de tecnologia, operações e produto para implementar as melhorias, garantindo alinhamento e entrega de resultados." 3 pontos.
+REGRAS DE SAÍDA (OBRIGATÓRIO)
+1) Retorne APENAS JSON válido (um único objeto). Nada antes e nada depois.
+2) NÃO use markdown. NÃO use blocos \`\`\` (nem \`\`\`json).
+3) Siga exatamente o schema abaixo (sem campos extras).
 
-Ainda como exemplo, seguem pergunta e critérios para o cargo de Data Scientist no setor financeiro:
-Pergunta 2: "Conte sobre um projeto em que você desenvolveu ou aplicou um modelo de machine learning para resolver um problema de negócio no setor financeiro (como detecção de fraude, previsão de inadimplência ou personalização de ofertas). Como definiu o problema, estruturou os dados e avaliou os resultados do modelo?"
-Critérios Pergunta 2: 
-"Demonstra clareza sobre o contexto do problema, objetivos de negócio e métricas de sucesso relevantes para o setor financeiro." 4 pontos.
-"Explica adequadamente as etapas de preparação dos dados, escolha de algoritmos, validação e uso de ferramentas (como Python, Spark, MLFlow ou AWS." 3 pontos
-"Mostra como avaliou o desempenho do modelo e como apresentou os resultados para stakeholders, destacando impacto mensurável ou aprendizados" 3 pontos.
-`,
-    },
-    answerEvaluation: {
-      id: 'answerEvaluation',
-      name: 'Avaliação de Respostas',
-      description: 'Usado para avaliar as respostas de um candidato e gerar um feedback.',
-      template: `Você é um avaliador de entrevistas sênior. Analise a transcrição da entrevista para o cargo de {jobTitle} ({jobLevel}). Descrição da vaga: "{jobDescription}". Avalie as respostas do candidato com base nos critérios fornecidos para cada pergunta. Seja crítico e justo. Forneça uma nota de 0 a 10 para cada critério, cada pergunta e uma nota global. Justifique suas notas. Destaque pontos fortes e áreas de melhoria em bullet points. Seja conciso. Transcrição: {interviewTranscript}. Retorne um JSON com "globalGrade", "summary", "strengths", "areasForImprovement" e "questionGrades" (um array com "question", "grade", "justification", e "criterionGrades" [array de "criterion", "grade", "justification"]).`,
-    },
-    keywordExtraction: {
-        id: 'keywordExtraction',
-        name: 'Extração de Palavras-chave',
-        description: 'Usado para extrair palavras-chave da descrição da vaga para melhorar a precisão da transcrição de áudio.',
-        template: `Extraia uma lista de 15 a 20 das palavras-chave técnicas e comportamentais mais importantes da descrição de vaga a seguir. A lista deve ser uma única string de texto, com as palavras separadas por vírgula. Inclua tecnologias, metodologias e habilidades. Descrição da vaga: "{jobDescription}" para o cargo de {jobTitle}.`,
-    },
-    baselineAnswerGeneration: {
-        id: 'baselineAnswerGeneration',
-        name: 'Geração de Resposta-Base (p/ Similaridade IA)',
-        description: 'Usado para criar uma resposta "ideal" para cada pergunta, que servirá como base de comparação para o cálculo de similaridade.',
-        template: `Você é um assistente de IA. Um candidato para a vaga de {jobTitle} pediu sua ajuda. A pergunta da entrevista é: "{question}". Gere uma resposta ideal, bem estruturada e profissional que um candidato poderia usar, como se estivesse tentando impressionar o recrutador. A descrição da vaga é: "{jobDescription}".`,
-    },
-    originalityEvaluation: {
-        id: 'originalityEvaluation',
-        name: 'Cálculo de Similaridade IA',
-        description: 'Compara a resposta do candidato com a resposta-base gerada pela IA para calcular um score de similaridade.',
-        template: `
+SCHEMA
+{
+  "questions": [
+    {
+      "question": string,
+      "criteria": [
+        { "text": string, "points": number }
+      ]
+    }
+  ]
+}
+
+VALIDAÇÕES
+- "questions" deve ter exatamente {numQuestions} itens.
+- Cada "criteria" deve ter exatamente 3 itens.
+- A soma de "points" dos 3 critérios deve ser exatamente 10.
+
+Responda somente com o JSON.`
+  },
+
+  answerEvaluation: {
+    id: 'answerEvaluation',
+    name: 'Avaliação de Respostas',
+    description: 'Usado para avaliar as respostas de um candidato e gerar um feedback.',
+    template: `
+Você é um avaliador de entrevistas sênior.
+
+CONTEXTO
+Cargo: {jobTitle} ({jobLevel})
+Descrição da vaga: {jobDescription}
+
+TRANSCRIÇÃO (perguntas, critérios e respostas do candidato):
+{interviewTranscript}
+
+TAREFA
+Avalie as respostas do candidato com base nos critérios fornecidos para cada pergunta. Seja crítico e justo.
+Forneça:
+- Nota global (0 a 10) com 1 casa decimal
+- Resumo curto (2–4 frases)
+- Pontos fortes e áreas de melhoria como LISTAS (arrays)
+- Para cada pergunta: nota (0 a 10) e justificativa
+- Para cada critério: nota (0 a 10) e justificativa
+
+REGRAS DE SAÍDA (OBRIGATÓRIO)
+1) Retorne APENAS JSON válido (um único objeto). Nada antes e nada depois.
+2) NÃO use markdown. NÃO use \`\`\` (nem \`\`\`json).
+3) "strengths" e "areasForImprovement" DEVEM ser arrays de strings (não texto com bullets).
+4) Siga exatamente o schema abaixo (sem campos extras).
+
+SCHEMA
+{
+  "globalGrade": number,
+  "summary": string,
+  "strengths": string[],
+  "areasForImprovement": string[],
+  "questionGrades": [
+    {
+      "question": string,
+      "grade": number,
+      "justification": string,
+      "criterionGrades": [
+        { "criterion": string, "grade": number, "justification": string }
+      ]
+    }
+  ]
+}
+
+Responda somente com o JSON.`
+  },
+
+  keywordExtraction: {
+    id: 'keywordExtraction',
+    name: 'Extração de Palavras-chave',
+    description: 'Usado para extrair palavras-chave da descrição da vaga para melhorar a precisão da transcrição de áudio.',
+    template: `Extraia uma lista de 15 a 20 das palavras-chave técnicas e comportamentais mais importantes da descrição de vaga a seguir. A lista deve ser uma única string de texto, com as palavras separadas por vírgula. Inclua tecnologias, metodologias e habilidades. Descrição da vaga: "{jobDescription}" para o cargo de {jobTitle}.`,
+  },
+
+  baselineAnswerGeneration: {
+    id: 'baselineAnswerGeneration',
+    name: 'Geração de Resposta-Base (p/ Similaridade IA)',
+    description: 'Usado para criar uma resposta "ideal" para cada pergunta, que servirá como base de comparação para o cálculo de similaridade.',
+    template: `Você é um assistente de IA. Um candidato para a vaga de {jobTitle} pediu sua ajuda. A pergunta da entrevista é: "{question}". Gere uma resposta ideal, bem estruturada e profissional que um candidato poderia usar, como se estivesse tentando impressionar o recrutador. A descrição da vaga é: "{jobDescription}".`,
+  },
+
+  originalityEvaluation: {
+    id: 'originalityEvaluation',
+    name: 'Cálculo de Similaridade IA',
+    description: 'Compara a resposta do candidato com a resposta-base gerada pela IA para calcular um score de similaridade.',
+    template: `
 ## SEU PAPEL
 Você é um especialista em análise de linguagem forense, treinado para diferenciar conteúdo gerado por humanos de conteúdo gerado por IA em um contexto de entrevista de emprego.
 
@@ -101,12 +153,13 @@ Resposta Padrão de IA: "{baselineAnswer}"
 ---
 Resposta do Candidato: "{candidateAnswer}"
 ---`,
-    },
-    candidateFeedbackGeneration: {
-        id: 'candidateFeedbackGeneration',
-        name: 'Geração de Feedback para o Candidato',
-        description: 'Cria um feedback personalizado e construtivo para o candidato com base nos resultados da avaliação.',
-        template: `
+  },
+
+  candidateFeedbackGeneration: {
+    id: 'candidateFeedbackGeneration',
+    name: 'Geração de Feedback para o Candidato',
+    description: 'Cria um feedback personalizado e construtivo para o candidato com base nos resultados da avaliação.',
+    template: `
         Você é um especialista em desenvolvimento de talentos e comunicação. Sua tarefa é redigir um feedback para um candidato para a vaga de {jobTitle}.
         O objetivo é fornecer um feedback que seja útil, construtivo, encorajador e específico, sem parecer um e-mail. O texto deve ser impessoal no formato, mas empático no tom.
 
@@ -129,28 +182,66 @@ Resposta do Candidato: "{candidateAnswer}"
         **Sua Tarefa:**
         Agora, gere o texto final do feedback para este candidato, seguindo todas as instruções acima.
     `,
-    },
-    cvAnalysis: {
-        id: 'cvAnalysis',
-        name: 'Análise de Currículo (CV)',
-        description: 'Analisa o texto extraído de um CV e o compara com a descrição da vaga para gerar um score de compatibilidade e outros insights.',
-        template: `Você é um recrutador sênior especialista em triagem de talentos. Sua tarefa é analisar o currículo de um candidato e compará-lo com a descrição de uma vaga.
-        A data de hoje é {currentDate}. Considere esta data ao analisar as experiências.
+  },
 
-        **Contexto:**
-        - **Vaga:** {jobTitle} ({jobLevel})
-        - **Descrição da Vaga:** "{jobDescription}"
-        - **Texto do Currículo:** "{cvText}"
+  cvAnalysis: {
+    id: 'cvAnalysis',
+    name: 'Análise de Currículo (CV)',
+    description: 'Analisa o texto extraído de um CV e o compara com a descrição da vaga para gerar um score de compatibilidade e outros insights.',
+    template: `
+Você é um recrutador sênior especialista em triagem de talentos.
 
-        **Sua Análise deve incluir:**
-        1.  **Score de Compatibilidade (matchScore):** Uma nota de 0 a 10, com uma casa decimal, representando o quão bem o candidato se encaixa na vaga com base puramente nas informações do CV.
-        2.  **Resumo (summary):** Um parágrafo conciso resumindo a adequação do candidato, destacando os principais pontos positivos e negativos.
-        3.  **Pontos Fortes (strengths):** Uma lista (bullet points) das experiências, habilidades e qualificações do candidato que estão mais alinhadas com os requisitos da vaga.
-        4.  **Pontos Fracos (weaknesses):** Uma lista (bullet points) de requisitos importantes da vaga que parecem estar ausentes ou pouco desenvolvidos no currículo do candidato.
-        5.  **Perguntas de Aprofundamento (followUpQuestions):** Primeiro, avalie criticamente se há pontos no CV que genuinamente necessitam de aprofundamento ou esclarecimento. Se houver, gere ATÉ 3 perguntas de aprofundamento. Para CADA pergunta, você DEVE criar 3 critérios de avaliação objetivos, cuja soma dos pontos seja exatamente 10. Se não houver necessidade de perguntas, retorne um array vazio para 'followUpQuestions' e preencha o campo 'analysisJustification' com uma breve explicação (ex: 'O CV é claro e não necessita de esclarecimentos.').
+Contexto da vaga:
+- Cargo: {jobTitle}
+- Nível: {jobLevel}
+- Descrição da vaga: {jobDescription}
+- Data atual: {currentDate}
 
-        Seja objetivo e baseie sua análise estritamente nas informações fornecidas. Retorne um JSON.`,
+Currículo (texto extraído):
+{cvText}
+
+REGRAS DE SAÍDA (OBRIGATÓRIO)
+1) Retorne APENAS um JSON válido (um único objeto). Nada antes e nada depois.
+2) NÃO use markdown. NÃO use blocos \`\`\` (nem \`\`\`json).
+3) Use EXATAMENTE o schema abaixo. NÃO adicione campos extras.
+4) "strengths" e "weaknesses" DEVEM ser ARRAYS de strings (não texto com bullets).
+5) Cada string em strengths/weaknesses deve ser uma frase curta, sem quebras de linha.
+
+SCHEMA (campos obrigatórios)
+{
+  "matchScore": number,
+  "summary": string,
+  "strengths": string[],
+  "weaknesses": string[],
+  "analysisJustification": string,
+  "followUpQuestions": [
+    {
+      "question": string,
+      "criteria": [
+        { "text": string, "points": number }
+      ]
     }
+  ]
+}
+
+REGRAS DE CONTEÚDO
+- matchScore: 0.0 a 10.0 (pode ter decimal).
+- summary: 2 a 5 frases em PT-BR.
+- strengths: 3 a 6 itens, específicos (skills, tecnologias, escopo).
+- weaknesses: 3 a 6 itens, específicos (gaps vs requisitos).
+- followUpQuestions:
+  - Gere ATÉ 3 perguntas SOMENTE se houver lacunas críticas ou ambiguidade relevante.
+  - Para cada pergunta: exatamente 3 critérios; soma de points = 10.
+  - Se não houver necessidade de perguntas, retorne [] e explique o motivo em analysisJustification.
+
+CHECKLIST FINAL
+- JSON parseável?
+- Sem markdown e sem \`\`\`?
+- strengths/weaknesses são arrays?
+- followUpQuestions segue schema?
+
+Responda SOMENTE com o JSON.`
+  }
 };
 
 interface AppData {
@@ -194,9 +285,7 @@ const saveData = (data: AppData) => {
   }
 };
 
-
 // --- MOCK API ---
-
 export const api = {
   // --- Autenticação ---
   async login(method: 'google' | 'credentials'): Promise<{ success: boolean; error?: string }> {
@@ -238,16 +327,16 @@ export const api = {
       };
       updatedVacancies = [...data.vacancies, newVacancy];
     }
-    
+
     saveData({ ...data, vacancies: updatedVacancies });
     return updatedVacancies;
   },
-  
+
   // --- Candidatos ---
   async addCandidatesToVacancy(vacancyId: string, candidates: { name: string }[]): Promise<Vacancy[]> {
     await simulateLatency();
     const data = loadData();
-    
+
     const newCandidates: CandidateResult[] = candidates.map(c => ({
       id: `cand_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       candidateName: c.name,
@@ -269,7 +358,7 @@ export const api = {
     saveData({ ...data, vacancies: updatedVacancies });
     return updatedVacancies;
   },
-  
+
   async savePersonalQuestions(vacancyId: string, candidateId: string, questions: BehavioralQuestion[]): Promise<Vacancy[]> {
     await simulateLatency();
     const data = loadData();
@@ -289,40 +378,43 @@ export const api = {
     return updatedVacancies;
   },
 
-  async saveCandidateResult(vacancyId: string, candidateResult: CandidateResult, interviewScript: InterviewQuestion[]): Promise<{ updatedVacancies: Vacancy[], updatedVacancy: Vacancy | null, updatedCandidate: CandidateResult | null }> {
-      await simulateLatency();
-      const data = loadData();
-      let finalCandidate: CandidateResult | null = null;
-      const fullCandidateResult = { ...candidateResult, interviewScript };
+  async saveCandidateResult(
+    vacancyId: string,
+    candidateResult: CandidateResult,
+    interviewScript: InterviewQuestion[]
+  ): Promise<{ updatedVacancies: Vacancy[], updatedVacancy: Vacancy | null, updatedCandidate: CandidateResult | null }> {
+    await simulateLatency();
+    const data = loadData();
+    let finalCandidate: CandidateResult | null = null;
+    const fullCandidateResult = { ...candidateResult, interviewScript };
 
-      const updatedVacancies = data.vacancies.map(v => {
-        if (v.id === vacancyId) {
-            const existingCandidateIndex = v.candidates.findIndex(c => c.id === fullCandidateResult.id);
-            let newCandidates: CandidateResult[];
+    const updatedVacancies = data.vacancies.map(v => {
+      if (v.id === vacancyId) {
+        const existingCandidateIndex = v.candidates.findIndex(c => c.id === fullCandidateResult.id);
+        let newCandidates: CandidateResult[];
 
-            if (existingCandidateIndex > -1) {
-                // Atualiza o candidato existente
-                newCandidates = [...v.candidates];
-                // FIX: Corrected typo from `existingCandidate-index` to `existingCandidateIndex`.
-                const updatedCandidate = { ...newCandidates[existingCandidateIndex], ...fullCandidateResult };
-                newCandidates[existingCandidateIndex] = updatedCandidate;
-                finalCandidate = updatedCandidate;
-            } else {
-                // Adiciona um novo candidato
-                newCandidates = [...(v.candidates || []), fullCandidateResult];
-                finalCandidate = fullCandidateResult;
-            }
-            return { ...v, candidates: newCandidates };
+        if (existingCandidateIndex > -1) {
+          // Atualiza o candidato existente
+          newCandidates = [...v.candidates];
+          const updatedCandidate = { ...newCandidates[existingCandidateIndex], ...fullCandidateResult };
+          newCandidates[existingCandidateIndex] = updatedCandidate;
+          finalCandidate = updatedCandidate;
+        } else {
+          // Adiciona um novo candidato
+          newCandidates = [...(v.candidates || []), fullCandidateResult];
+          finalCandidate = fullCandidateResult;
         }
-        return v;
-      });
+        return { ...v, candidates: newCandidates };
+      }
+      return v;
+    });
 
-      saveData({ ...data, vacancies: updatedVacancies });
-      return {
-          updatedVacancies,
-          updatedVacancy: updatedVacancies.find(v => v.id === vacancyId) || null,
-          updatedCandidate: finalCandidate
-      };
+    saveData({ ...data, vacancies: updatedVacancies });
+    return {
+      updatedVacancies,
+      updatedVacancy: updatedVacancies.find(v => v.id === vacancyId) || null,
+      updatedCandidate: finalCandidate
+    };
   },
 
   // --- Prompts ---
@@ -335,24 +427,28 @@ export const api = {
   },
 
   // --- Reavaliação ---
-  async updateEvaluation(vacancyId: string, candidateId: string, newEvaluation: any): Promise<{ updatedVacancies: Vacancy[], updatedCandidate: CandidateResult | null }> {
-      await simulateLatency();
-      const data = loadData();
-      let updatedCandidate: CandidateResult | null = null;
-      const updatedVacancies = data.vacancies.map(v => {
-          if (v.id === vacancyId) {
-              const newCandidates = v.candidates.map(c => {
-                  if (c.id === candidateId) {
-                      updatedCandidate = { ...c, evaluation: newEvaluation };
-                      return updatedCandidate;
-                  }
-                  return c;
-              });
-              return { ...v, candidates: newCandidates };
+  async updateEvaluation(
+    vacancyId: string,
+    candidateId: string,
+    newEvaluation: any
+  ): Promise<{ updatedVacancies: Vacancy[], updatedCandidate: CandidateResult | null }> {
+    await simulateLatency();
+    const data = loadData();
+    let updatedCandidate: CandidateResult | null = null;
+    const updatedVacancies = data.vacancies.map(v => {
+      if (v.id === vacancyId) {
+        const newCandidates = v.candidates.map(c => {
+          if (c.id === candidateId) {
+            updatedCandidate = { ...c, evaluation: newEvaluation };
+            return updatedCandidate;
           }
-          return v;
-      });
-      saveData({ ...data, vacancies: updatedVacancies });
-      return { updatedVacancies, updatedCandidate };
+          return c;
+        });
+        return { ...v, candidates: newCandidates };
+      }
+      return v;
+    });
+    saveData({ ...data, vacancies: updatedVacancies });
+    return { updatedVacancies, updatedCandidate };
   }
 };
