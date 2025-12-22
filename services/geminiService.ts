@@ -20,39 +20,16 @@ const generatePrompt = (
   }, template);
 };
 
-// Remove ```json / ``` e tenta extrair JSON válido mesmo com texto extra
-const parseJsonFromGeminiText = (text: string) => {
-  const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-
-  // 1) tenta parse direto
-  try {
-    return JSON.parse(cleaned);
-  } catch {}
-
-  // 2) tenta extrair objeto {...}
-  const firstObj = cleaned.indexOf("{");
-  const lastObj = cleaned.lastIndexOf("}");
-  if (firstObj !== -1 && lastObj !== -1 && lastObj > firstObj) {
-    const slice = cleaned.slice(firstObj, lastObj + 1);
-    return JSON.parse(slice);
-  }
-
-  // 3) tenta extrair array [...]
-  const firstArr = cleaned.indexOf("[");
-  const lastArr = cleaned.lastIndexOf("]");
-  if (firstArr !== -1 && lastArr !== -1 && lastArr > firstArr) {
-    const slice = cleaned.slice(firstArr, lastArr + 1);
-    return JSON.parse(slice);
-  }
-
-  throw new Error("Resposta do Gemini não contém JSON válido.");
-};
-
 // ============================================
-// CLIENTE DE API (BACKEND)
+// CLIENTES DE API (BACKEND)
 // ============================================
 
-const callGeminiApi = async (prompt: string): Promise<{ text: string }> => {
+type GeminiTextResponse = { text: string; model?: string };
+type GeminiJsonResponse =
+  | { ok: true; data: any; model?: string }
+  | { ok: false; error: any };
+
+const callGeminiTextApi = async (prompt: string): Promise<GeminiTextResponse> => {
   const response = await fetch("/api/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -65,6 +42,35 @@ const callGeminiApi = async (prompt: string): Promise<{ text: string }> => {
   }
 
   return response.json();
+};
+
+const callGeminiJsonApi = async (prompt: string): Promise<any> => {
+  const response = await fetch("/api/gemini-json", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Erro Gemini JSON API: ${text}`);
+  }
+
+  let parsed: GeminiJsonResponse;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`Resposta inválida do /api/gemini-json: ${text}`);
+  }
+
+  if (!parsed.ok) {
+    throw new Error(
+      `Gemini JSON API retornou erro: ${JSON.stringify(parsed.error)}`
+    );
+  }
+
+  return parsed.data;
 };
 
 // ============================================
@@ -80,7 +86,7 @@ export const extractKeywordsFromJobDescription = async (
     jobTitle: details.title,
   });
 
-  const result = await callGeminiApi(prompt);
+  const result = await callGeminiTextApi(prompt);
   return result.text.trim();
 };
 
@@ -95,7 +101,7 @@ const generateBaselineAnswer = async (
     jobDescription: jobDetails.description,
   });
 
-  const result = await callGeminiApi(prompt);
+  const result = await callGeminiTextApi(prompt);
   return result.text.trim();
 };
 
@@ -119,10 +125,9 @@ export const generateQuestions = async (
       numQuestions: details.numQuestions,
       jobDescription: details.description,
       biasDescription: biasMapping[details.bias],
-    }) + "\n\nIMPORTANTE: Retorne APENAS o JSON puro, sem blocos ```.";
+    }) + "\n\nIMPORTANTE: Retorne APENAS JSON puro.";
 
-  const result = await callGeminiApi(prompt);
-  const parsed: any = parseJsonFromGeminiText(result.text);
+  const parsed: any = await callGeminiJsonApi(prompt);
 
   return Promise.all(
     parsed.questions.map(async (q: any) => {
@@ -163,10 +168,10 @@ export const evaluateAnswers = async (
       jobLevel: jobDetails.level,
       jobDescription: jobDetails.description,
       interviewTranscript: transcript,
-    }) + "\n\nRetorne APENAS JSON puro, sem blocos ```.";
+    }) + "\n\nIMPORTANTE: Retorne APENAS JSON puro.";
 
-  const result = await callGeminiApi(prompt);
-  return parseJsonFromGeminiText(result.text) as EvaluationResult;
+  const data = await callGeminiJsonApi(prompt);
+  return data as EvaluationResult;
 };
 
 export const analyzeCv = async (
@@ -182,8 +187,8 @@ export const analyzeCv = async (
       jobDescription: jobDetails.description,
       cvText,
       currentDate,
-    }) + "\n\nRetorne APENAS JSON puro, sem blocos ```.";
+    }) + "\n\nIMPORTANTE: Retorne APENAS JSON puro.";
 
-  const result = await callGeminiApi(prompt);
-  return parseJsonFromGeminiText(result.text) as CvEvaluationResult;
+  const data = await callGeminiJsonApi(prompt);
+  return data as CvEvaluationResult;
 };
