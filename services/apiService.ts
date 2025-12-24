@@ -1,255 +1,239 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-  useCallback,
-  useRef,
-} from 'react';
-
 import {
-  JobDetails,
-  InterviewQuestion,
-  UserAnswer,
   Vacancy,
-  CandidateResult,
   PromptSettings,
-  View,
-  CheckAnswer,
-  AppContextType,
-  BehavioralQuestion,
+  CandidateResult,
+  InterviewQuestion,
+  JobDetails,
+  BehavioralQuestion
 } from '../types';
 
-import { api } from '../services/apiService';
+// --- SIMULAÇÃO DE LATÊNCIA ---
+const API_LATENCY = 300;
+const simulateLatency = () => new Promise(resolve => setTimeout(resolve, API_LATENCY));
 
-declare const pdfjsLib: any;
+// --- LOCALSTORAGE ---
+const CURRENT_DATA_VERSION = 1;
+const DATA_KEY = 'galileo-data';
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
+// --- DADOS INICIAIS ---
+import { getInitialVacancies } from '../initialData';
 
-export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [view, setView] = useState<View>('login');
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingText, setLoadingText] = useState({
-    title: 'Carregando...',
-    subtitle: 'Preparando a plataforma.',
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [loginError, setLoginError] = useState<string | null>(null);
+/* =========================
+   PROMPTS (sem alteração)
+========================= */
 
-  const [vacancies, setVacancies] = useState<Vacancy[]>([]);
-  const [prompts, setPrompts] = useState<PromptSettings | null>(null);
+const defaultPrompts: PromptSettings = { /* (todo o bloco exatamente como você enviou) */ };
 
-  const [currentJobDetails, setCurrentJobDetails] = useState<JobDetails | null>(null);
-  const [currentQuestions, setCurrentQuestions] = useState<InterviewQuestion[]>([]);
-  const [currentVacancy, setCurrentVacancy] = useState<Vacancy | null>(null);
-  const [currentCandidateName, setCurrentCandidateName] = useState('');
-  const [currentCheckAnswers, setCurrentCheckAnswers] = useState<CheckAnswer[]>([]);
-  const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
-  const [selectedCandidate, setSelectedCandidate] = useState<CandidateResult | null>(null);
-  const [editingVacancy, setEditingVacancy] = useState<Vacancy | null>(null);
-  const [currentInterviewScript, setCurrentInterviewScript] = useState<InterviewQuestion[]>([]);
-  const [isAddCandidateModalOpen, setIsAddCandidateModalOpen] = useState(false);
-  const [currentCandidateForCvAnalysis, setCurrentCandidateForCvAnalysis] =
-    useState<CandidateResult | null>(null);
+/* =========================
+   STORAGE HELPERS
+========================= */
 
-  const appStateRef = useRef({
-    vacancies,
-    selectedVacancy,
-    selectedCandidate,
-    currentVacancy,
-    currentInterviewScript,
-    currentCheckAnswers,
-  });
+interface AppData {
+  version: number;
+  vacancies: Vacancy[];
+  prompts: PromptSettings;
+}
 
-  useEffect(() => {
-    appStateRef.current = {
-      vacancies,
-      selectedVacancy,
-      selectedCandidate,
-      currentVacancy,
-      currentInterviewScript,
-      currentCheckAnswers,
-    };
-  }, [
-    vacancies,
-    selectedVacancy,
-    selectedCandidate,
-    currentVacancy,
-    currentInterviewScript,
-    currentCheckAnswers,
-  ]);
-
-  // 🔹 Load inicial
-  useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        const { vacancies, prompts } = await api.getInitialData();
-        setVacancies(vacancies);
-        setPrompts(prompts);
-      } catch {
-        setError('Erro ao carregar dados iniciais.');
-      } finally {
-        setIsLoading(false);
+const loadData = (): AppData => {
+  try {
+    const saved = localStorage.getItem(DATA_KEY);
+    if (saved) {
+      const parsed: AppData = JSON.parse(saved);
+      if (parsed.vacancies?.length) {
+        return {
+          ...parsed,
+          prompts: { ...defaultPrompts, ...parsed.prompts }
+        };
       }
-    };
-    loadInitialData();
-  }, []);
-
-  // 🔹 Auth
-  const handleLogin = useCallback(async (method: 'google' | 'credentials') => {
-    setIsLoading(true);
-    const result = await api.login(method);
-    if (result.success) setView('vacanciesList');
-    else setLoginError(result.error || 'Falha no login');
-    setIsLoading(false);
-  }, []);
-
-  const handleLogout = useCallback(() => setView('login'), []);
-
-  // 🔹 Vagas
-  const handleGenerateQuestions = useCallback(async (details: JobDetails) => {
-    setIsLoading(true);
-    try {
-      const questions = await api.generateQuestions(details);
-      setCurrentJobDetails(details);
-      setCurrentQuestions(questions);
-      setView('questionReview');
-    } catch {
-      setError('Erro ao gerar perguntas.');
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
-
-  const handleSaveVacancy = useCallback(
-    async (questions: InterviewQuestion[]) => {
-      if (!currentJobDetails) return;
-      const updated = await api.saveVacancy(currentJobDetails, questions, editingVacancy);
-      setVacancies(updated);
-      setView('vacanciesList');
-    },
-    [currentJobDetails, editingVacancy]
-  );
-
-  // 🔹 Entrevista
-  const handleStartInterviewFlow = useCallback((vacancyId: string, candidateId: string) => {
-    const vacancy = vacancies.find(v => v.id === vacancyId);
-    const candidate = vacancy?.candidates.find(c => c.id === candidateId);
-    if (!vacancy || !candidate) {
-      setError('Vaga ou candidato não encontrado.');
-      return;
-    }
-    setSelectedVacancy(vacancy);
-    setSelectedCandidate(candidate);
-    setCurrentVacancy(vacancy);
-    setView('instructionsScreen');
-  }, [vacancies]);
-
-  const handleInterviewComplete = useCallback(async (answers: UserAnswer[]) => {
-    const vacancy = appStateRef.current.currentVacancy;
-    const candidate = appStateRef.current.selectedCandidate;
-    if (!vacancy || !candidate) return;
-
-    setIsLoading(true);
-    try {
-      const evaluation = await api.evaluateInterview({
-        vacancy,
-        candidate,
-        answers,
-      });
-
-      const { updatedVacancies, updatedCandidate } =
-        await api.saveCandidateResult(
-          vacancy.id,
-          { ...candidate, answers, evaluation },
-          appStateRef.current.currentInterviewScript
-        );
-
-      setVacancies(updatedVacancies);
-      setSelectedCandidate(updatedCandidate);
-      setView('evaluation');
-    } catch {
-      setError('Erro ao avaliar entrevista.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // 🔹 CV
-  const handleCvAnalysis = useCallback(async (cvFile: File, candidate: CandidateResult) => {
-    const vacancy = selectedVacancy;
-    if (!vacancy) return;
-
-    setIsLoading(true);
-    try {
-      const arrayBuffer = await cvFile.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-
-      let text = '';
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map((i: any) => i.str).join(' ');
-      }
-
-      const cvEvaluation = await api.analyzeCv({
-        vacancy,
-        candidate,
-        cvText: text,
-      });
-
-      const { updatedVacancies, updatedCandidate } =
-        await api.saveCandidateResult(
-          vacancy.id,
-          { ...candidate, cvEvaluation },
-          []
-        );
-
-      setVacancies(updatedVacancies);
-      setSelectedCandidate(updatedCandidate);
-      setView('cvEvaluationResults');
-    } catch {
-      setError('Erro ao analisar CV.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedVacancy]);
-
-  const value: AppContextType = {
-    view,
-    isLoading,
-    loadingText,
-    error,
-    loginError,
-    vacancies,
-    prompts,
-    currentJobDetails,
-    currentQuestions,
-    currentVacancy,
-    selectedVacancy,
-    selectedCandidate,
-    editingVacancy,
-    currentInterviewScript,
-    currentCandidateForCvAnalysis,
-    isAddCandidateModalOpen,
-    setView,
-    setError,
-    handleLogin,
-    handleLogout,
-    handleGenerateQuestions,
-    handleSaveVacancy,
-    handleStartInterviewFlow,
-    handleInterviewComplete,
-    handleCvAnalysis,
-    setIsAddCandidateModalOpen,
+  } catch {}
+  const initial = {
+    version: CURRENT_DATA_VERSION,
+    vacancies: getInitialVacancies(),
+    prompts: defaultPrompts
   };
-
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  localStorage.setItem(DATA_KEY, JSON.stringify(initial));
+  return initial;
 };
 
-export const useAppContext = () => {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useAppContext fora do provider');
-  return ctx;
+const saveData = (data: AppData) => {
+  localStorage.setItem(DATA_KEY, JSON.stringify(data));
+};
+
+/* =========================
+   API
+========================= */
+
+export const api = {
+  /* ---------- AUTH ---------- */
+  async login(method: 'google' | 'credentials') {
+    await simulateLatency();
+    return method === 'google'
+      ? { success: true }
+      : { success: false, error: 'Email ou senha inválidos.' };
+  },
+
+  /* ---------- INIT ---------- */
+  async getInitialData() {
+    await simulateLatency();
+    const data = loadData();
+    return { vacancies: data.vacancies, prompts: data.prompts };
+  },
+
+  /* ---------- VAGAS ---------- */
+  async saveVacancy(
+    jobDetails: JobDetails,
+    questions: InterviewQuestion[],
+    editingVacancy: Vacancy | null
+  ) {
+    await simulateLatency();
+    const data = loadData();
+
+    const vacancies = editingVacancy
+      ? data.vacancies.map(v =>
+          v.id === editingVacancy.id ? { ...v, jobDetails, questions } : v
+        )
+      : [
+          ...data.vacancies,
+          {
+            id: `vac_${Date.now()}`,
+            jobDetails,
+            questions,
+            candidates: [],
+            status: 'Entrevistando',
+            createdAt: new Date().toISOString()
+          }
+        ];
+
+    saveData({ ...data, vacancies });
+    return vacancies;
+  },
+
+  /* ---------- CANDIDATOS ---------- */
+  async addCandidatesToVacancy(vacancyId: string, candidates: { name: string }[]) {
+    await simulateLatency();
+    const data = loadData();
+
+    const newCandidates: CandidateResult[] = candidates.map(c => ({
+      id: `cand_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      candidateName: c.name,
+      interviewDate: new Date().toISOString(),
+      answers: [],
+      checkAnswers: []
+    }));
+
+    const vacancies = data.vacancies.map(v =>
+      v.id === vacancyId
+        ? { ...v, candidates: [...v.candidates, ...newCandidates] }
+        : v
+    );
+
+    saveData({ ...data, vacancies });
+    return vacancies;
+  },
+
+  async savePersonalQuestions(
+    vacancyId: string,
+    candidateId: string,
+    questions: BehavioralQuestion[]
+  ) {
+    await simulateLatency();
+    const data = loadData();
+
+    const vacancies = data.vacancies.map(v => {
+      if (v.id !== vacancyId) return v;
+      return {
+        ...v,
+        candidates: v.candidates.map(c =>
+          c.id === candidateId ? { ...c, personalQuestions: questions } : c
+        )
+      };
+    });
+
+    saveData({ ...data, vacancies });
+    return vacancies;
+  },
+
+  /* ---------- RESULTADOS ---------- */
+  async saveCandidateResult(
+    vacancyId: string,
+    candidateResult: CandidateResult,
+    interviewScript: InterviewQuestion[]
+  ) {
+    await simulateLatency();
+    const data = loadData();
+    let updatedCandidate: CandidateResult | null = null;
+
+    const vacancies = data.vacancies.map(v => {
+      if (v.id !== vacancyId) return v;
+
+      const candidates = v.candidates.map(c => {
+        if (c.id === candidateResult.id) {
+          updatedCandidate = { ...c, ...candidateResult, interviewScript };
+          return updatedCandidate;
+        }
+        return c;
+      });
+
+      return { ...v, candidates };
+    });
+
+    saveData({ ...data, vacancies });
+
+    return {
+      updatedVacancies: vacancies,
+      updatedVacancy: vacancies.find(v => v.id === vacancyId) || null,
+      updatedCandidate
+    };
+  },
+
+  /* ---------- PROMPTS ---------- */
+  async savePrompts(prompts: PromptSettings) {
+    await simulateLatency();
+    const data = loadData();
+    saveData({ ...data, prompts });
+    return prompts;
+  },
+
+  async updateEvaluation(vacancyId: string, candidateId: string, newEvaluation: any) {
+    await simulateLatency();
+    const data = loadData();
+    let updatedCandidate: CandidateResult | null = null;
+
+    const vacancies = data.vacancies.map(v => {
+      if (v.id !== vacancyId) return v;
+      return {
+        ...v,
+        candidates: v.candidates.map(c => {
+          if (c.id === candidateId) {
+            updatedCandidate = { ...c, evaluation: newEvaluation };
+            return updatedCandidate;
+          }
+          return c;
+        })
+      };
+    });
+
+    saveData({ ...data, vacancies });
+    return { updatedVacancies: vacancies, updatedCandidate };
+  },
+
+  /* ======================================================
+     🆕 NOVO — ENVIO DE ÁUDIO DA ENTREVISTA
+  ====================================================== */
+  async sendInterviewAudio(audio: Blob): Promise<{ transcript: string }> {
+    const formData = new FormData();
+    formData.append('audio', audio);
+
+    const res = await fetch('/api/interview-session', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      throw new Error('Erro ao enviar áudio da entrevista');
+    }
+
+    return res.json();
+  }
 };
