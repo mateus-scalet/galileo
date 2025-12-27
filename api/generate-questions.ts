@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { generateQuestions } from './_lib/gemini.ts';
+import { generateQuestions } from './lib/gemini.ts';
 
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
