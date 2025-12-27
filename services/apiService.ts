@@ -302,13 +302,48 @@ export const api = {
       throw new Error(json?.error || 'Erro ao gerar perguntas da vaga');
     }
 
-    // ✅ Normaliza: endpoint pode retornar { questions: [...] }
     const questions = json?.questions;
     if (!Array.isArray(questions)) {
       throw new Error('Resposta inválida do backend: "questions" não é um array.');
     }
 
     return questions;
+  },
+
+  /* ======================================================
+     🧠 IA — EXTRAIR KEYWORDS (BACKEND)
+  ====================================================== */
+  async extractKeywords(details: JobDetails): Promise<string> {
+    await simulateLatency();
+
+    const data = loadData();
+    const prompts = data.prompts;
+
+    if (!prompts?.keywordExtraction?.template?.trim()) {
+      throw new Error('Prompt "Extração de Keywords" está vazio. Vá em Configurações e salve os prompts.');
+    }
+
+    const res = await fetch('/api/extract-keywords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobDetails: details,
+        keywordPromptTemplate: prompts.keywordExtraction.template
+      })
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || 'Erro ao extrair keywords');
+    }
+
+    const keywords = json?.keywords;
+    if (typeof keywords !== 'string') {
+      throw new Error('Resposta inválida do backend: "keywords" não é string.');
+    }
+
+    return keywords.trim();
   },
 
   /* ---------- VAGAS ---------- */
