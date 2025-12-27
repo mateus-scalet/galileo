@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { generateQuestions } from './lib/gemini';
 
+// IMPORTANT: ESM runtime no Vercel pode exigir extensão .js no import relativo
+import { generateQuestions } from './lib/gemini.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
