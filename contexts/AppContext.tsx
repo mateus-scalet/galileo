@@ -233,7 +233,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
 
       setAudioContext(context);
 
-      const keywords = await geminiService.extractKeywordsFromJobDescription(vacancy.jobDetails, prompts.keywordExtraction.template);
+      const keywords = await api.extractKeywords(vacancy.jobDetails);
       setInterviewKeywords(keywords);
 
       const checkQuestions = vacancy.questions.filter(q => q.type === 'check');
