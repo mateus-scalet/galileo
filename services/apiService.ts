@@ -4,7 +4,9 @@ import {
   CandidateResult,
   InterviewQuestion,
   JobDetails,
-  BehavioralQuestion
+  BehavioralQuestion,
+  UserAnswer,
+  EvaluationResult
 } from '../types';
 
 // --- SIMULAÇÃO DE LATÊNCIA ---
@@ -19,7 +21,7 @@ const DATA_KEY = 'galileo-data';
 import { getInitialVacancies } from '../initialData';
 
 /* =========================
-   PROMPTS DEFAULT (COM TEMPLATE)
+   PROMPTS DEFAULT
 ========================= */
 
 const defaultPrompts: PromptSettings = {
@@ -27,190 +29,43 @@ const defaultPrompts: PromptSettings = {
     id: 'questionGeneration',
     name: 'Geração de Perguntas',
     description: 'Gera perguntas e critérios (soma 10 pontos).',
-    template: `
-Você é um especialista em entrevistas.
-Gere {numQuestions} perguntas para uma entrevista do cargo "{jobTitle}" (nível {jobLevel}).
-A descrição da vaga é:
-
-{jobDescription}
-
-O foco deve ser: {biasDescription}.
-
-Regras:
-- Retorne APENAS JSON válido.
-- A chave raiz deve ser "questions".
-- Cada item deve ter: "question" (string) e "criteria" (array).
-- "criteria" deve ter exatamente 3 itens.
-- Cada critério: { "text": string, "points": number }.
-- A soma dos points de cada pergunta deve ser exatamente 10.
-
-Exemplo do formato:
-{
-  "questions": [
-    {
-      "question": "...",
-      "criteria": [
-        { "text": "...", "points": 4 },
-        { "text": "...", "points": 3 },
-        { "text": "...", "points": 3 }
-      ]
-    }
-  ]
-}
-`.trim()
+    template: `Você é um especialista em entrevistas...`
   },
-
   answerEvaluation: {
     id: 'answerEvaluation',
     name: 'Avaliação de Respostas',
     description: 'Avalia a entrevista com base em critérios.',
-    template: `
-Você é um avaliador de entrevistas.
-Cargo: {jobTitle} (nível {jobLevel})
-
-Descrição da vaga:
-{jobDescription}
-
-Transcrição da entrevista:
-{interviewTranscript}
-
-Retorne APENAS JSON válido no formato:
-{
-  "globalGrade": number (0 a 10, 1 casa decimal),
-  "summary": string,
-  "strengths": string (bullet points com "- "),
-  "areasForImprovement": string (bullet points com "- "),
-  "questionGrades": [
-    {
-      "question": string,
-      "grade": number (0 a 10),
-      "justification": string,
-      "criterionGrades": [
-        { "criterion": string, "grade": number (0 a 10), "justification": string }
-      ]
-    }
-  ]
-}
-`.trim()
+    template: `Você é um avaliador de entrevistas...`
   },
-
   keywordExtraction: {
     id: 'keywordExtraction',
     name: 'Extração de Keywords',
-    description: 'Extrai palavras-chave relevantes da vaga.',
-    template: `
-Extraia as principais palavras-chave (hard e soft skills) para o cargo "{jobTitle}" a partir do texto:
-{jobDescription}
-
-Retorne em uma única linha, separando por vírgula.
-`.trim()
+    description: '',
+    template: ``
   },
-
   baselineAnswerGeneration: {
     id: 'baselineAnswerGeneration',
     name: 'Resposta Base',
-    description: 'Gera uma resposta ideal para comparar originalidade.',
-    template: `
-Crie uma resposta ideal (bem estruturada e objetiva) para a pergunta abaixo,
-considerando o cargo "{jobTitle}" e a vaga:
-
-Pergunta: {question}
-
-Descrição:
-{jobDescription}
-
-Retorne apenas o texto da resposta.
-`.trim()
+    description: '',
+    template: ``
   },
-
   originalityEvaluation: {
     id: 'originalityEvaluation',
     name: 'Originalidade',
-    description: 'Estima similaridade com resposta base.',
-    template: `
-Compare a resposta do candidato com a resposta base.
-Responda APENAS JSON válido:
-
-{
-  "score": number (0 a 100),
-  "justification": string
-}
-
-Resposta do candidato:
-{candidateAnswer}
-
-Resposta base:
-{baselineAnswer}
-
-Interpretação do score:
-- 0-20: muito original
-- 21-60: algum padrão
-- 61-100: alta probabilidade de texto "modelado"/IA
-`.trim()
+    description: '',
+    template: ``
   },
-
   candidateFeedbackGeneration: {
     id: 'candidateFeedbackGeneration',
     name: 'Feedback',
-    description: 'Gera feedback final ao candidato.',
-    template: `
-Gere um feedback ao candidato para o cargo "{jobTitle}".
-Use tom construtivo e objetivo.
-
-Resumo:
-{summary}
-
-Pontos fortes:
-{strengths}
-
-Melhorias:
-{areasForImprovement}
-
-Transcrição (perguntas e respostas):
-{answersTranscript}
-
-Retorne apenas o texto do feedback (sem JSON).
-`.trim()
+    description: '',
+    template: ``
   },
-
   cvAnalysis: {
     id: 'cvAnalysis',
     name: 'Análise de CV',
-    description: 'Avalia CV vs vaga e sugere perguntas de follow-up.',
-    template: `
-Você é um avaliador de currículo.
-Cargo: {jobTitle} (nível {jobLevel})
-Data de referência: {currentDate}
-
-Descrição da vaga:
-{jobDescription}
-
-Texto do currículo:
-{cvText}
-
-Retorne APENAS JSON válido no formato:
-{
-  "matchScore": number (0 a 10, 1 casa decimal),
-  "summary": string,
-  "strengths": string (bullet points com "- "),
-  "weaknesses": string (bullet points com "- "),
-  "followUpQuestions": [
-    {
-      "question": string,
-      "criteria": [
-        { "text": string, "points": number },
-        { "text": string, "points": number },
-        { "text": string, "points": number }
-      ]
-    }
-  ],
-  "analysisJustification": string (se followUpQuestions for [])
-}
-
-Regras:
-- followUpQuestions pode ser [].
-- Se houver followUpQuestions, cada pergunta deve ter 3 critérios somando 10.
-`.trim()
+    description: '',
+    template: ``
   }
 };
 
@@ -271,20 +126,13 @@ export const api = {
   },
 
   /* ======================================================
-     🧠 IA — GERAR PERGUNTAS (BACKEND)
+     🧠 IA — GERAR PERGUNTAS
   ====================================================== */
   async generateQuestions(details: JobDetails): Promise<InterviewQuestion[]> {
     await simulateLatency();
 
     const data = loadData();
     const prompts = data.prompts;
-
-    if (!prompts?.questionGeneration?.template?.trim()) {
-      throw new Error('Prompt "Geração de Perguntas" está vazio. Vá em Configurações e salve os prompts.');
-    }
-    if (!prompts?.baselineAnswerGeneration?.template?.trim()) {
-      throw new Error('Prompt "Resposta Base" está vazio. Vá em Configurações e salve os prompts.');
-    }
 
     const res = await fetch('/api/generate-questions', {
       method: 'POST',
@@ -296,54 +144,52 @@ export const api = {
       })
     });
 
-    const json = await res.json().catch(() => ({}));
+    const json = await res.json();
 
     if (!res.ok) {
-      throw new Error(json?.error || 'Erro ao gerar perguntas da vaga');
+      throw new Error(json?.error || 'Erro ao gerar perguntas');
     }
 
-    const questions = json?.questions;
-    if (!Array.isArray(questions)) {
-      throw new Error('Resposta inválida do backend: "questions" não é um array.');
-    }
-
-    return questions;
+    return json.questions;
   },
 
   /* ======================================================
-     🧠 IA — EXTRAIR KEYWORDS (BACKEND)
+     🧠 IA — AVALIAR ENTREVISTA (NOVO)
   ====================================================== */
-  async extractKeywords(details: JobDetails): Promise<string> {
+  async evaluateInterview(params: {
+    jobDetails: JobDetails;
+    interviewScript: InterviewQuestion[];
+    answers: UserAnswer[];
+  }): Promise<EvaluationResult> {
     await simulateLatency();
 
     const data = loadData();
     const prompts = data.prompts;
 
-    if (!prompts?.keywordExtraction?.template?.trim()) {
-      throw new Error('Prompt "Extração de Keywords" está vazio. Vá em Configurações e salve os prompts.');
-    }
-
-    const res = await fetch('/api/extract-keywords', {
+    const res = await fetch('/api/evaluate-interview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        jobDetails: details,
-        keywordPromptTemplate: prompts.keywordExtraction.template
+        jobDetails: params.jobDetails,
+        interviewScript: params.interviewScript,
+        answers: params.answers,
+        evaluationPromptTemplate: prompts.answerEvaluation.template,
+        originalityPromptTemplate: prompts.originalityEvaluation.template,
+        feedbackPromptTemplate: prompts.candidateFeedbackGeneration.template
       })
     });
 
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      throw new Error(json?.error || 'Erro ao extrair keywords');
+      throw new Error(json?.error || 'Erro ao avaliar entrevista');
     }
 
-    const keywords = json?.keywords;
-    if (typeof keywords !== 'string') {
-      throw new Error('Resposta inválida do backend: "keywords" não é string.');
+    if (!json?.evaluation) {
+      throw new Error('Resposta inválida do backend: evaluation ausente.');
     }
 
-    return keywords.trim();
+    return json.evaluation;
   },
 
   /* ---------- VAGAS ---------- */
@@ -398,28 +244,6 @@ export const api = {
     return vacancies;
   },
 
-  async savePersonalQuestions(
-    vacancyId: string,
-    candidateId: string,
-    questions: BehavioralQuestion[]
-  ) {
-    await simulateLatency();
-    const data = loadData();
-
-    const vacancies = data.vacancies.map(v => {
-      if (v.id !== vacancyId) return v;
-      return {
-        ...v,
-        candidates: v.candidates.map(c =>
-          c.id === candidateId ? { ...c, personalQuestions: questions } : c
-        )
-      };
-    });
-
-    saveData({ ...data, vacancies });
-    return vacancies;
-  },
-
   /* ---------- RESULTADOS ---------- */
   async saveCandidateResult(
     vacancyId: string,
@@ -448,17 +272,8 @@ export const api = {
 
     return {
       updatedVacancies: vacancies,
-      updatedVacancy: vacancies.find(v => v.id === vacancyId) || null,
       updatedCandidate
     };
-  },
-
-  /* ---------- PROMPTS ---------- */
-  async savePrompts(prompts: PromptSettings) {
-    await simulateLatency();
-    const data = loadData();
-    saveData({ ...data, prompts });
-    return prompts;
   },
 
   /* ======================================================
