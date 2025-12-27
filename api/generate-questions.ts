@@ -1,23 +1,25 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { generateQuestions } from '../lib/ai'; // ajuste o path se necessário
+import { generateQuestions } from './_lib/gemini';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({
+      error: 'Missing GEMINI_API_KEY',
+      details: 'Configure GEMINI_API_KEY no Vercel (Preview + Production) e redeploy.',
+    });
+  }
 
-    const {
-      jobDetails,
-      questionPromptTemplate,
-      baselineAnswerPromptTemplate
-    } = body || {};
+  try {
+    const { jobDetails, questionPromptTemplate, baselineAnswerPromptTemplate } = req.body || {};
 
     if (!jobDetails || !questionPromptTemplate || !baselineAnswerPromptTemplate) {
       return res.status(400).json({
-        error: 'Payload incompleto para geração de perguntas'
+        error: 'Payload incompleto para geração de perguntas',
+        receivedKeys: Object.keys(req.body || {}),
       });
     }
 
@@ -32,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('❌ Erro generate-questions:', error);
     return res.status(500).json({
       error: 'Erro ao gerar perguntas',
-      details: error?.message
+      details: error?.message || String(error),
     });
   }
 }
