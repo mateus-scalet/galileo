@@ -1,5 +1,7 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from '@google/genai';
-import {
+
+// IMPORTANT: type-only imports somem no build (evita erro de module resolution no runtime)
+import type {
   JobDetails,
   InterviewQuestion,
   UserAnswer,
@@ -7,12 +9,11 @@ import {
   QuestionGrade,
   BehavioralQuestion,
   CvEvaluationResult,
-} from '../types';
+} from '../../types';
 
 const apiKey = process.env.GEMINI_API_KEY as string;
 
 if (!apiKey) {
-  // Isso ajuda muito a debugar no Vercel (vira o "details" do 500)
   throw new Error('Missing env var: GEMINI_API_KEY');
 }
 
@@ -361,7 +362,11 @@ export const evaluateAnswers = async (
         const userAnswer = answers.find(a => a.question === grade.question);
 
         if (questionData?.baselineAnswer && userAnswer?.answer) {
-          const originality = await calculateOriginalityScore(userAnswer.answer, questionData.baselineAnswer, originalityPromptTemplate);
+          const originality = await calculateOriginalityScore(
+            userAnswer.answer,
+            questionData.baselineAnswer,
+            originalityPromptTemplate
+          );
           return {
             ...grade,
             originalityScore: originality.score,
