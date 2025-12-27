@@ -149,7 +149,7 @@ Interpretação do score:
 `.trim()
   },
 
-  candidateFeedbackGeneration illuminated: {
+  candidateFeedbackGeneration: {
     id: 'candidateFeedbackGeneration',
     name: 'Feedback',
     description: 'Gera feedback final ao candidato.',
