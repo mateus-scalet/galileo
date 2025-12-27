@@ -19,10 +19,53 @@ const DATA_KEY = 'galileo-data';
 import { getInitialVacancies } from '../initialData';
 
 /* =========================
-   PROMPTS (sem alteração)
+   PROMPTS DEFAULT
 ========================= */
 
-const defaultPrompts: PromptSettings = { /* (todo o bloco exatamente como você enviou) */ };
+const defaultPrompts: PromptSettings = {
+  questionGeneration: {
+    id: 'questionGeneration',
+    name: 'Geração de Perguntas',
+    description: '',
+    template: ''
+  },
+  answerEvaluation: {
+    id: 'answerEvaluation',
+    name: 'Avaliação de Respostas',
+    description: '',
+    template: ''
+  },
+  keywordExtraction: {
+    id: 'keywordExtraction',
+    name: 'Extração de Keywords',
+    description: '',
+    template: ''
+  },
+  baselineAnswerGeneration: {
+    id: 'baselineAnswerGeneration',
+    name: 'Resposta Base',
+    description: '',
+    template: ''
+  },
+  originalityEvaluation: {
+    id: 'originalityEvaluation',
+    name: 'Originalidade',
+    description: '',
+    template: ''
+  },
+  candidateFeedbackGeneration: {
+    id: 'candidateFeedbackGeneration',
+    name: 'Feedback',
+    description: '',
+    template: ''
+  },
+  cvAnalysis: {
+    id: 'cvAnalysis',
+    name: 'Análise de CV',
+    description: '',
+    template: ''
+  }
+};
 
 /* =========================
    STORAGE HELPERS
@@ -39,19 +82,19 @@ const loadData = (): AppData => {
     const saved = localStorage.getItem(DATA_KEY);
     if (saved) {
       const parsed: AppData = JSON.parse(saved);
-      if (parsed.vacancies?.length) {
-        return {
-          ...parsed,
-          prompts: { ...defaultPrompts, ...parsed.prompts }
-        };
-      }
+      return {
+        ...parsed,
+        prompts: { ...defaultPrompts, ...parsed.prompts }
+      };
     }
   } catch {}
+
   const initial = {
     version: CURRENT_DATA_VERSION,
     vacancies: getInitialVacancies(),
     prompts: defaultPrompts
   };
+
   localStorage.setItem(DATA_KEY, JSON.stringify(initial));
   return initial;
 };
@@ -78,6 +121,38 @@ export const api = {
     await simulateLatency();
     const data = loadData();
     return { vacancies: data.vacancies, prompts: data.prompts };
+  },
+
+  /* ======================================================
+     🧠 IA — GERAR PERGUNTAS (BACKEND)
+  ====================================================== */
+  async generateQuestions(details: JobDetails): Promise<InterviewQuestion[]> {
+    await simulateLatency();
+
+    const data = loadData();
+    const prompts = data.prompts;
+
+    if (!prompts?.questionGeneration?.template) {
+      throw new Error('Prompt de geração de perguntas não encontrado');
+    }
+
+    const res = await fetch('/api/generate-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobDetails: details,
+        questionPromptTemplate: prompts.questionGeneration.template,
+        baselineAnswerPromptTemplate:
+          prompts.baselineAnswerGeneration.template
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error('Erro ao gerar perguntas da vaga');
+    }
+
+    const json = await res.json();
+    return json.questions;
   },
 
   /* ---------- VAGAS ---------- */
@@ -195,33 +270,10 @@ export const api = {
     return prompts;
   },
 
-  async updateEvaluation(vacancyId: string, candidateId: string, newEvaluation: any) {
-    await simulateLatency();
-    const data = loadData();
-    let updatedCandidate: CandidateResult | null = null;
-
-    const vacancies = data.vacancies.map(v => {
-      if (v.id !== vacancyId) return v;
-      return {
-        ...v,
-        candidates: v.candidates.map(c => {
-          if (c.id === candidateId) {
-            updatedCandidate = { ...c, evaluation: newEvaluation };
-            return updatedCandidate;
-          }
-          return c;
-        })
-      };
-    });
-
-    saveData({ ...data, vacancies });
-    return { updatedVacancies: vacancies, updatedCandidate };
-  },
-
   /* ======================================================
-     🆕 NOVO — ENVIO DE ÁUDIO DA ENTREVISTA
+     🎧 ÁUDIO (já ok)
   ====================================================== */
-  async sendInterviewAudio(audio: Blob): Promise<{ transcript: string }> {
+  async sendInterviewAudio(audio: Blob) {
     const formData = new FormData();
     formData.append('audio', audio);
 
@@ -231,7 +283,7 @@ export const api = {
     });
 
     if (!res.ok) {
-      throw new Error('Erro ao enviar áudio da entrevista');
+      throw new Error('Erro ao enviar áudio');
     }
 
     return res.json();
