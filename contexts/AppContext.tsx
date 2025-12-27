@@ -53,9 +53,15 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       currentVacancy,
       selectedCandidate,
       currentInterviewScript,
-      currentCheckAnswers
+      currentCheckAnswers,
     };
-  }, [vacancies, currentVacancy, selectedCandidate, currentInterviewScript, currentCheckAnswers]);
+  }, [
+    vacancies,
+    currentVacancy,
+    selectedCandidate,
+    currentInterviewScript,
+    currentCheckAnswers,
+  ]);
 
   /* ---------- INIT ---------- */
   useEffect(() => {
@@ -78,11 +84,15 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   ====================================================== */
   const handleInterviewComplete = useCallback(
     async (answers: UserAnswer[]) => {
-      const vacancy = appRef.current.currentVacancy;
-      const candidate = appRef.current.selectedCandidate;
-      const interviewScript = appRef.current.currentInterviewScript;
+      const vacancy: Vacancy | null = appRef.current.currentVacancy;
+      const candidate: CandidateResult | null = appRef.current.selectedCandidate;
+      const interviewScript: InterviewQuestion[] =
+        appRef.current.currentInterviewScript;
 
-      if (!vacancy || !candidate) return;
+      if (!vacancy || !candidate) {
+        console.warn('handleInterviewComplete chamado sem vacancy ou candidate');
+        return;
+      }
 
       setLoadingText({
         title: 'Avaliando respostas...',
@@ -92,6 +102,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       setError(null);
 
       try {
+        // 👉 100% BACKEND
         const evaluation: EvaluationResult = await api.evaluateInterview({
           jobDetails: vacancy.jobDetails,
           interviewScript,
@@ -114,7 +125,8 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
         setSelectedCandidate(updatedCandidate);
         setView('evaluation');
       } catch (e: any) {
-        setError(e.message || 'Erro ao avaliar entrevista.');
+        console.error(e);
+        setError(e?.message || 'Erro ao avaliar entrevista.');
       } finally {
         setIsLoading(false);
       }
