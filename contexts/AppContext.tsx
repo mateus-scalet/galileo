@@ -18,8 +18,7 @@ import {
   View,
   CheckAnswer,
   AppContextType,
-  BehavioralQuestion,
-  EvaluationResult
+  EvaluationResult,
 } from '../types';
 
 import { api } from '../services/apiService';
@@ -45,6 +44,9 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   const [currentInterviewScript, setCurrentInterviewScript] = useState<InterviewQuestion[]>([]);
   const [currentCheckAnswers, setCurrentCheckAnswers] = useState<CheckAnswer[]>([]);
 
+  /**
+   * appRef evita closures quebradas durante async
+   */
   const appRef = useRef<any>({});
 
   useEffect(() => {
@@ -63,7 +65,9 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     currentCheckAnswers,
   ]);
 
-  /* ---------- INIT ---------- */
+  /* ======================================================
+     INIT
+  ====================================================== */
   useEffect(() => {
     const load = async () => {
       try {
@@ -76,11 +80,13 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
         setIsLoading(false);
       }
     };
+
     load();
   }, []);
 
   /* ======================================================
-     🧠 AVALIAÇÃO DA ENTREVISTA (BACKEND)
+     🧠 AVALIAÇÃO DA ENTREVISTA (100% BACKEND)
+     ⚠️ NÃO depende de áudio
   ====================================================== */
   const handleInterviewComplete = useCallback(
     async (answers: UserAnswer[]) => {
@@ -102,7 +108,9 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       setError(null);
 
       try {
-        // 👉 100% BACKEND
+        /**
+         * 👉 Avaliação feita EXCLUSIVAMENTE no backend
+         */
         const evaluation: EvaluationResult = await api.evaluateInterview({
           jobDetails: vacancy.jobDetails,
           interviewScript,
