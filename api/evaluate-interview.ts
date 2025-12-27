@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       !feedbackPromptTemplate
     ) {
       return res.status(400).json({
-        error: 'Payload incompleto para avaliação da entrevista',
+        error: 'Payload incompleto para avaliar entrevista',
         receivedKeys: Object.keys(req.body || {}),
       });
     }
