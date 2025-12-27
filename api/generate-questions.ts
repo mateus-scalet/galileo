@@ -1,7 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import {
-  generateQuestions
-} from './_lib/gemini';
+import { generateQuestions } from '../lib/ai'; // ajuste o path se necessário
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -15,8 +13,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       baselineAnswerPromptTemplate
     } = req.body;
 
-    if (!jobDetails || !questionPromptTemplate || !baselineAnswerPromptTemplate) {
-      return res.status(400).json({ error: 'Payload inválido' });
+    if (
+      !jobDetails ||
+      !questionPromptTemplate ||
+      !baselineAnswerPromptTemplate
+    ) {
+      return res.status(400).json({
+        error: 'Payload incompleto para geração de perguntas'
+      });
     }
 
     const questions = await generateQuestions(
@@ -26,10 +30,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     return res.status(200).json({ questions });
+
   } catch (error: any) {
-    console.error('Erro em /api/generate-questions:', error);
+    console.error('❌ Erro generate-questions:', error);
     return res.status(500).json({
-      error: error.message || 'Erro ao gerar perguntas'
+      error: 'Erro ao gerar perguntas',
+      details: error?.message
     });
   }
 }
