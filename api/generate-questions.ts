@@ -7,17 +7,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
     const {
       jobDetails,
       questionPromptTemplate,
       baselineAnswerPromptTemplate
-    } = req.body;
+    } = body || {};
 
-    if (
-      !jobDetails ||
-      !questionPromptTemplate ||
-      !baselineAnswerPromptTemplate
-    ) {
+    if (!jobDetails || !questionPromptTemplate || !baselineAnswerPromptTemplate) {
       return res.status(400).json({
         error: 'Payload incompleto para geração de perguntas'
       });
@@ -30,7 +28,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     return res.status(200).json({ questions });
-
   } catch (error: any) {
     console.error('❌ Erro generate-questions:', error);
     return res.status(500).json({
