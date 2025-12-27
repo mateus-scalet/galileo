@@ -147,9 +147,8 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     resetFlowState();
   }, [resetFlowState]);
 
+  // ✅ CORREÇÃO: geração de perguntas agora usa BACKEND via apiService
   const handleGenerateQuestions = useCallback(async (details: JobDetails) => {
-    if (!appStateRef.current.prompts) return;
-
     setLoadingText({
       title: 'A IA está calibrando as perguntas...',
       subtitle: 'Criando uma entrevista sob medida para encontrar o talento ideal.',
@@ -160,11 +159,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       const existingCheckQuestions = currentQuestions.filter(q => q.type === 'check');
 
-      const newBehavioralQuestions = await geminiService.generateQuestions(
-        details,
-        appStateRef.current.prompts.questionGeneration.template,
-        appStateRef.current.prompts.baselineAnswerGeneration.template
-      );
+      const newBehavioralQuestions = await api.generateQuestions(details);
 
       const combinedQuestions = [...existingCheckQuestions, ...newBehavioralQuestions];
 
@@ -172,7 +167,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       setCurrentQuestions(combinedQuestions);
       setView('questionReview');
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || 'Erro ao gerar perguntas.');
     } finally {
       setIsLoading(false);
     }
