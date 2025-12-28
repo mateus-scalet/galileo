@@ -6,6 +6,7 @@ import {
   JobDetails,
   BehavioralQuestion,
   CvEvaluationResult,
+  EvaluationResult,
 } from '../types';
 
 // --- SIMULAÇÃO DE LATÊNCIA ---
@@ -345,6 +346,58 @@ export const api = {
     }
 
     return keywords.trim();
+  },
+
+  /* ======================================================
+     🧠 IA — AVALIAR ENTREVISTA (BACKEND)
+     /api/evaluate-interview
+  ====================================================== */
+  async evaluateInterview(payload: {
+    jobDetails: JobDetails;
+    interviewScript: InterviewQuestion[];
+    answers: { question: string; answer: string }[];
+  }): Promise<EvaluationResult> {
+    await simulateLatency();
+
+    const data = loadData();
+    const prompts = data.prompts;
+
+    if (!prompts?.answerEvaluation?.template?.trim()) {
+      throw new Error('Prompt "Avaliação de Respostas" está vazio. Vá em Configurações e salve os prompts.');
+    }
+    if (!prompts?.originalityEvaluation?.template?.trim()) {
+      throw new Error('Prompt "Originalidade" está vazio. Vá em Configurações e salve os prompts.');
+    }
+    if (!prompts?.candidateFeedbackGeneration?.template?.trim()) {
+      throw new Error('Prompt "Feedback" está vazio. Vá em Configurações e salve os prompts.');
+    }
+
+    const res = await fetch('/api/evaluate-interview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobDetails: payload.jobDetails,
+        interviewScript: payload.interviewScript,
+        answers: payload.answers,
+        evaluationPromptTemplate: prompts.answerEvaluation.template,
+        originalityPromptTemplate: prompts.originalityEvaluation.template,
+        feedbackPromptTemplate: prompts.candidateFeedbackGeneration.template,
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.details || json?.error || 'Erro ao avaliar entrevista');
+    }
+
+    // compatível com variações: { evaluation }, { result }
+    const evaluation = (json?.evaluation ?? json?.result);
+    if (!evaluation || typeof evaluation !== 'object') {
+      throw new Error('Resposta inválida do backend: "evaluation" não é um objeto.');
+    }
+
+    return evaluation as EvaluationResult;
   },
 
   /* ======================================================
