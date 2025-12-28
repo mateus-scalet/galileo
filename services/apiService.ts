@@ -5,8 +5,6 @@ import {
   InterviewQuestion,
   JobDetails,
   BehavioralQuestion,
-  UserAnswer,
-  EvaluationResult,
   CvEvaluationResult,
 } from '../types';
 
@@ -350,68 +348,17 @@ export const api = {
   },
 
   /* ======================================================
-     🧠 IA — AVALIAR ENTREVISTA (BACKEND)
-     Endpoint: /api/evaluate-interview
-  ====================================================== */
-  async evaluateInterview(payload: {
-    jobDetails: JobDetails;
-    interviewScript: InterviewQuestion[];
-    answers: UserAnswer[];
-  }): Promise<EvaluationResult> {
-    await simulateLatency();
-
-    const { prompts } = loadData();
-
-    if (!prompts?.answerEvaluation?.template?.trim()) {
-      throw new Error('Prompt "Avaliação de Respostas" está vazio. Vá em Configurações e salve os prompts.');
-    }
-    if (!prompts?.originalityEvaluation?.template?.trim()) {
-      throw new Error('Prompt "Originalidade" está vazio. Vá em Configurações e salve os prompts.');
-    }
-    if (!prompts?.candidateFeedbackGeneration?.template?.trim()) {
-      throw new Error('Prompt "Feedback" está vazio. Vá em Configurações e salve os prompts.');
-    }
-
-    const res = await fetch('/api/evaluate-interview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jobDetails: payload.jobDetails,
-        interviewScript: payload.interviewScript,
-        answers: payload.answers,
-        evaluationPromptTemplate: prompts.answerEvaluation.template,
-        originalityPromptTemplate: prompts.originalityEvaluation.template,
-        feedbackPromptTemplate: prompts.candidateFeedbackGeneration.template,
-      })
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      // prioriza "details" do backend quando existir (fica muito mais debugável)
-      throw new Error(json?.details || json?.error || 'Erro ao avaliar entrevista');
-    }
-
-    const evaluation = json?.evaluation;
-    if (!evaluation || typeof evaluation !== 'object') {
-      throw new Error('Resposta inválida do backend: "evaluation" não é um objeto.');
-    }
-
-    return evaluation as EvaluationResult;
-  },
-
-  /* ======================================================
      🧠 IA — ANALISAR CV (BACKEND)
-     Endpoint: /api/analyze-cv
-     (mantém a qualidade: frontend extrai texto do PDF, backend só avalia)
+     (ÚNICA MUDANÇA: normalização do followUpQuestions.type)
   ====================================================== */
   async analyzeCv(details: JobDetails, cvText: string): Promise<CvEvaluationResult> {
     await simulateLatency();
 
-    const { prompts } = loadData();
+    const data = loadData();
+    const prompts = data.prompts;
 
     if (!prompts?.cvAnalysis?.template?.trim()) {
-      throw new Error('Prompt "Análise de CV" está vazio.');
+      throw new Error('Prompt "Análise de CV" está vazio. Vá em Configurações e salve os prompts.');
     }
 
     const currentDate = new Date().toLocaleDateString('pt-BR');
@@ -434,12 +381,22 @@ export const api = {
     }
 
     // compatível com variações: { result }, { cvEvaluation }, { evaluation }
-    const result = json?.result ?? json?.cvEvaluation ?? json?.evaluation;
-    if (!result || typeof result !== 'object') {
+    const raw = (json?.result ?? json?.cvEvaluation ?? json?.evaluation);
+    if (!raw || typeof raw !== 'object') {
       throw new Error('Resposta inválida do backend: resultado da análise de CV não é um objeto.');
     }
 
-    return result as CvEvaluationResult;
+    const normalized: CvEvaluationResult = {
+      ...raw,
+      followUpQuestions: Array.isArray((raw as any).followUpQuestions)
+        ? (raw as any).followUpQuestions.map((q: any) => ({
+            ...q,
+            type: 'behavioral' as const,
+          }))
+        : [],
+    };
+
+    return normalized;
   },
 
   /* ---------- VAGAS ---------- */
@@ -546,36 +503,6 @@ export const api = {
       updatedVacancies: vacancies,
       updatedVacancy: vacancies.find(v => v.id === vacancyId) || null,
       updatedCandidate
-    };
-  },
-
-  /* ======================================================
-     ✅ UPDATE EVALUATION (local) — usado no Reevaluate
-     (não chama IA; só substitui evaluation salvo no storage)
-  ====================================================== */
-  async updateEvaluation(vacancyId: string, candidateId: string, evaluation: EvaluationResult) {
-    await simulateLatency();
-
-    const data = loadData();
-    let updatedCandidate: CandidateResult | null = null;
-
-    const vacancies = data.vacancies.map(v => {
-      if (v.id !== vacancyId) return v;
-
-      const candidates = v.candidates.map(c => {
-        if (c.id !== candidateId) return c;
-        updatedCandidate = { ...c, evaluation };
-        return updatedCandidate;
-      });
-
-      return { ...v, candidates };
-    });
-
-    saveData({ ...data, vacancies });
-
-    return {
-      updatedVacancies: vacancies,
-      updatedCandidate,
     };
   },
 
