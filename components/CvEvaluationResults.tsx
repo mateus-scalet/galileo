@@ -114,11 +114,15 @@ const CvEvaluationResults: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        {/* ✅ Score com destaque (ocupa o box) */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col min-h-[180px]">
           <p className="text-slate-400 text-sm mb-2">Score de Alinhamento</p>
-          <p className={`text-5xl font-bold ${getScoreColor(safeMatchScore)}`}>
-            {safeMatchScore.toFixed(1)}
-          </p>
+
+          <div className="flex-1 flex items-center justify-center">
+            <p className={`font-extrabold leading-none tracking-tight ${getScoreColor(safeMatchScore)} text-[96px] md:text-[120px]`}>
+              {safeMatchScore.toFixed(1)}
+            </p>
+          </div>
         </div>
 
         <div className="md:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5">
