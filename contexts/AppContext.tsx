@@ -19,8 +19,10 @@ import {
   CheckAnswer,
   AppContextType,
   BehavioralQuestion,
+  EvaluationResult,
 } from '../types';
 
+import * as geminiService from '../services/geminiService';
 import { api } from '../services/apiService';
 
 // Informa ao TypeScript sobre a biblioteca pdf.js carregada globalmente
@@ -146,7 +148,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     resetFlowState();
   }, [resetFlowState]);
 
-  // ✅ geração de perguntas usa BACKEND via apiService
+  // ✅ geração de perguntas via BACKEND
   const handleGenerateQuestions = useCallback(async (details: JobDetails) => {
     setLoadingText({
       title: 'A IA está calibrando as perguntas...',
@@ -157,7 +159,9 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
 
     try {
       const existingCheckQuestions = currentQuestions.filter(q => q.type === 'check');
+
       const newBehavioralQuestions = await api.generateQuestions(details);
+
       const combinedQuestions = [...existingCheckQuestions, ...newBehavioralQuestions];
 
       setCurrentJobDetails(details);
@@ -229,7 +233,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
 
       setAudioContext(context);
 
-      // ✅ keywords via backend
+      // ✅ keywords via BACKEND
       const keywords = await api.extractKeywords(vacancy.jobDetails);
       setInterviewKeywords(keywords);
 
@@ -269,7 +273,10 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     setView(hasCheckQuestions ? 'check' : 'interview');
   }, [goBackToVacancies]);
 
-  // ✅ avaliação agora usa BACKEND via /api/evaluate-interview
+  /**
+   * ✅ AVALIAÇÃO: agora usa BACKEND (/api/evaluate-interview)
+   * Não depende do mic estar funcionando pra existir — apenas pra você conseguir chegar na etapa.
+   */
   const handleInterviewComplete = useCallback(async (answers: UserAnswer[]) => {
     const vacancy = appStateRef.current.currentVacancy;
     const candidate = appStateRef.current.selectedCandidate;
@@ -287,7 +294,8 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     setError(null);
 
     try {
-      const evaluation = await api.evaluateInterview({
+      // ✅ 100% BACKEND
+      const evaluation: EvaluationResult = await api.evaluateInterview({
         jobDetails: vacancy.jobDetails,
         interviewScript,
         answers,
@@ -315,13 +323,17 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       setSelectedCandidate(updatedCandidate);
       setView('evaluation');
     } catch (e: any) {
-      setError(e.message || 'Erro ao avaliar entrevista.');
+      setError(e?.message || 'Erro ao avaliar entrevista.');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // ✅ reavaliação também via BACKEND
+  /**
+   * Reevaluate: eu NÃO mexi aqui, porque depende de api.updateEvaluation
+   * e você não colou a parte final do apiService.
+   * (Se você quiser, no próximo passo a gente migra isso também.)
+   */
   const handleReevaluate = useCallback(async () => {
     const vacancy = appStateRef.current.selectedVacancy;
     const candidate = appStateRef.current.selectedCandidate;
@@ -329,26 +341,27 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
 
     if (!vacancy || !candidate || !prompts) return;
 
-    const reevaluationScript =
-      candidate.interviewScript || [...(vacancy.questions || []), ...(candidate.personalQuestions || [])];
+    const reevaluationScript = candidate.interviewScript || [...(vacancy.questions || []), ...(candidate.personalQuestions || [])];
 
     setLoadingText({ title: 'Reavaliando com a IA...', subtitle: 'Um novo olhar sobre as respostas para garantir a máxima precisão.' });
     setIsLoading(true);
     setError(null);
 
     try {
-      const newEvaluation = await api.evaluateInterview({
-        jobDetails: vacancy.jobDetails,
-        interviewScript: reevaluationScript,
-        answers: candidate.answers,
-      });
+      const newEvaluation = await geminiService.evaluateAnswers(
+        vacancy.jobDetails,
+        reevaluationScript,
+        candidate.answers,
+        prompts.answerEvaluation.template,
+        prompts.originalityEvaluation.template,
+        prompts.candidateFeedbackGeneration.template
+      );
 
-      // Mantém seu fluxo atual (assumindo que api.updateEvaluation existe no seu apiService completo)
       const { updatedVacancies, updatedCandidate } = await api.updateEvaluation(vacancy.id, candidate.id, newEvaluation);
       setVacancies(updatedVacancies);
       setSelectedCandidate(updatedCandidate);
     } catch (e: any) {
-      setError(e.message || 'Erro ao reavaliar entrevista.');
+      setError(e.message);
     } finally {
       setIsLoading(false);
     }
@@ -376,7 +389,10 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     setView('cvUpload');
   }, []);
 
-  // ✅ CV analysis agora via BACKEND, mantendo a qualidade do pipeline de extração + validações
+  /**
+   * ✅ CV: mantém qualidade do fluxo original (pdfjs, validações),
+   * mas chama o BACKEND (/api/analyze-cv) ao invés de geminiService.
+   */
   const handleCvAnalysis = useCallback(async (cvFile: File, candidate: CandidateResult) => {
     const vacancy = appStateRef.current.selectedVacancy;
     const prompts = appStateRef.current.prompts;
@@ -407,7 +423,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       const cvText = fullText.trim();
       if (!cvText) throw new Error('Não foi possível extrair texto do PDF. O arquivo pode ser uma imagem ou estar vazio.');
 
-      // ✅ backend faz a análise (mantém o mesmo “nível” de validação/fluxo)
+      // ✅ backend
       const cvEvaluation = await api.analyzeCv(vacancy.jobDetails, cvText);
 
       const updatedCandidateData = { ...candidate, cvEvaluation };
