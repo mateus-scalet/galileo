@@ -22,7 +22,6 @@ import {
   EvaluationResult,
 } from '../types';
 
-import * as geminiService from '../services/geminiService';
 import { api } from '../services/apiService';
 
 // Informa ao TypeScript sobre a biblioteca pdf.js carregada globalmente
@@ -33,7 +32,10 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [view, setView] = useState<View>('login');
   const [isLoading, setIsLoading] = useState(true); // Start true for initial load
-  const [loadingText, setLoadingText] = useState({ title: 'Carregando...', subtitle: 'Preparando a plataforma.' });
+  const [loadingText, setLoadingText] = useState({
+    title: 'Carregando...',
+    subtitle: 'Preparando a plataforma.',
+  });
   const [error, setError] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -46,7 +48,8 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   const [currentVacancy, setCurrentVacancy] = useState<Vacancy | null>(null);
   const [currentCandidateName, setCurrentCandidateName] = useState<string>('');
   const [currentCheckAnswers, setCurrentCheckAnswers] = useState<CheckAnswer[]>([]);
-  const [currentCandidateForCvAnalysis, setCurrentCandidateForCvAnalysis] = useState<CandidateResult | null>(null);
+  const [currentCandidateForCvAnalysis, setCurrentCandidateForCvAnalysis] =
+    useState<CandidateResult | null>(null);
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateResult | null>(null);
   const [editingVacancy, setEditingVacancy] = useState<Vacancy | null>(null);
@@ -149,38 +152,44 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [resetFlowState]);
 
   // ✅ geração de perguntas via BACKEND
-  const handleGenerateQuestions = useCallback(async (details: JobDetails) => {
-    setLoadingText({
-      title: 'A IA está calibrando as perguntas...',
-      subtitle: 'Criando uma entrevista sob medida para encontrar o talento ideal.',
-    });
-    setIsLoading(true);
-    setError(null);
+  const handleGenerateQuestions = useCallback(
+    async (details: JobDetails) => {
+      setLoadingText({
+        title: 'A IA está calibrando as perguntas...',
+        subtitle: 'Criando uma entrevista sob medida para encontrar o talento ideal.',
+      });
+      setIsLoading(true);
+      setError(null);
 
-    try {
-      const existingCheckQuestions = currentQuestions.filter(q => q.type === 'check');
+      try {
+        const existingCheckQuestions = currentQuestions.filter(q => q.type === 'check');
 
-      const newBehavioralQuestions = await api.generateQuestions(details);
+        const newBehavioralQuestions = await api.generateQuestions(details);
 
-      const combinedQuestions = [...existingCheckQuestions, ...newBehavioralQuestions];
+        const combinedQuestions = [...existingCheckQuestions, ...newBehavioralQuestions];
 
-      setCurrentJobDetails(details);
-      setCurrentQuestions(combinedQuestions);
-      setView('questionReview');
-    } catch (e: any) {
-      setError(e.message || 'Erro ao gerar perguntas.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentQuestions]);
+        setCurrentJobDetails(details);
+        setCurrentQuestions(combinedQuestions);
+        setView('questionReview');
+      } catch (e: any) {
+        setError(e.message || 'Erro ao gerar perguntas.');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [currentQuestions]
+  );
 
-  const handleSaveVacancy = useCallback(async (questions: InterviewQuestion[]) => {
-    if (currentJobDetails) {
-      const updatedVacancies = await api.saveVacancy(currentJobDetails, questions, editingVacancy);
-      setVacancies(updatedVacancies);
-      goBackToVacancies();
-    }
-  }, [currentJobDetails, editingVacancy, goBackToVacancies]);
+  const handleSaveVacancy = useCallback(
+    async (questions: InterviewQuestion[]) => {
+      if (currentJobDetails) {
+        const updatedVacancies = await api.saveVacancy(currentJobDetails, questions, editingVacancy);
+        setVacancies(updatedVacancies);
+        goBackToVacancies();
+      }
+    },
+    [currentJobDetails, editingVacancy, goBackToVacancies]
+  );
 
   const handleStartInterviewFlow = useCallback((vacancyId: string, candidateId: string) => {
     const freshVacancy = appStateRef.current.vacancies.find(v => v.id === vacancyId);
@@ -224,7 +233,8 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
 
       // Mantém o comportamento original do app (worklet)
       const workletResponse = await fetch('/audioProcessor.js');
-      if (!workletResponse.ok) throw new Error(`Failed to fetch audio processor script: ${workletResponse.statusText}`);
+      if (!workletResponse.ok)
+        throw new Error(`Failed to fetch audio processor script: ${workletResponse.statusText}`);
       const workletScript = await workletResponse.text();
       const workletBlob = new Blob([workletScript], { type: 'application/javascript' });
       const workletUrl = URL.createObjectURL(workletBlob);
@@ -274,17 +284,15 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [goBackToVacancies]);
 
   /**
-   * ✅ AVALIAÇÃO: agora usa BACKEND (/api/evaluate-interview)
-   * Não depende do mic estar funcionando pra existir — apenas pra você conseguir chegar na etapa.
+   * ✅ AVALIAÇÃO: BACKEND (/api/evaluate-interview)
    */
   const handleInterviewComplete = useCallback(async (answers: UserAnswer[]) => {
     const vacancy = appStateRef.current.currentVacancy;
     const candidate = appStateRef.current.selectedCandidate;
-    const prompts = appStateRef.current.prompts;
     const interviewScript = appStateRef.current.currentInterviewScript;
     const checkAnswers = appStateRef.current.currentCheckAnswers;
 
-    if (!vacancy || !prompts || !candidate) return;
+    if (!vacancy || !candidate) return;
 
     setLoadingText({
       title: 'Avaliando suas respostas...',
@@ -294,7 +302,6 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     setError(null);
 
     try {
-      // ✅ 100% BACKEND
       const evaluation: EvaluationResult = await api.evaluateInterview({
         jobDetails: vacancy.jobDetails,
         interviewScript,
@@ -302,8 +309,8 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       });
 
       const latestCandidateFromState = appStateRef.current.vacancies
-        .find(v => v.id === vacancy.id)?.candidates
-        .find(c => c.id === candidate.id);
+        .find(v => v.id === vacancy.id)
+        ?.candidates.find(c => c.id === candidate.id);
 
       const candidateData: CandidateResult = {
         ...(latestCandidateFromState || candidate),
@@ -330,38 +337,41 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   }, []);
 
   /**
-   * Reevaluate: eu NÃO mexi aqui, porque depende de api.updateEvaluation
-   * e você não colou a parte final do apiService.
-   * (Se você quiser, no próximo passo a gente migra isso também.)
+   * ✅ REEVALUATE: agora 100% BACKEND também
    */
   const handleReevaluate = useCallback(async () => {
     const vacancy = appStateRef.current.selectedVacancy;
     const candidate = appStateRef.current.selectedCandidate;
-    const prompts = appStateRef.current.prompts;
 
-    if (!vacancy || !candidate || !prompts) return;
+    if (!vacancy || !candidate) return;
 
-    const reevaluationScript = candidate.interviewScript || [...(vacancy.questions || []), ...(candidate.personalQuestions || [])];
+    const reevaluationScript =
+      candidate.interviewScript || [...(vacancy.questions || []), ...(candidate.personalQuestions || [])];
 
-    setLoadingText({ title: 'Reavaliando com a IA...', subtitle: 'Um novo olhar sobre as respostas para garantir a máxima precisão.' });
+    setLoadingText({
+      title: 'Reavaliando com a IA...',
+      subtitle: 'Um novo olhar sobre as respostas para garantir a máxima precisão.',
+    });
     setIsLoading(true);
     setError(null);
 
     try {
-      const newEvaluation = await geminiService.evaluateAnswers(
-        vacancy.jobDetails,
-        reevaluationScript,
-        candidate.answers,
-        prompts.answerEvaluation.template,
-        prompts.originalityEvaluation.template,
-        prompts.candidateFeedbackGeneration.template
+      const newEvaluation: EvaluationResult = await api.evaluateInterview({
+        jobDetails: vacancy.jobDetails,
+        interviewScript: reevaluationScript,
+        answers: candidate.answers,
+      });
+
+      const { updatedVacancies, updatedCandidate } = await api.updateEvaluation(
+        vacancy.id,
+        candidate.id,
+        newEvaluation
       );
 
-      const { updatedVacancies, updatedCandidate } = await api.updateEvaluation(vacancy.id, candidate.id, newEvaluation);
       setVacancies(updatedVacancies);
       setSelectedCandidate(updatedCandidate);
     } catch (e: any) {
-      setError(e.message);
+      setError(e?.message || 'Erro ao reavaliar entrevista.');
     } finally {
       setIsLoading(false);
     }
@@ -390,8 +400,7 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
   }, []);
 
   /**
-   * ✅ CV: mantém qualidade do fluxo original (pdfjs, validações),
-   * mas chama o BACKEND (/api/analyze-cv) ao invés de geminiService.
+   * ✅ CV: mantém fluxo original (pdfjs, validações), mas chama BACKEND (/api/analyze-cv)
    */
   const handleCvAnalysis = useCallback(async (cvFile: File, candidate: CandidateResult) => {
     const vacancy = appStateRef.current.selectedVacancy;
@@ -405,7 +414,10 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       return;
     }
 
-    setLoadingText({ title: 'Lendo nas entrelinhas...', subtitle: 'Nossa IA está cruzando dados e decifrando talentos a partir da inteligência.' });
+    setLoadingText({
+      title: 'Lendo nas entrelinhas...',
+      subtitle: 'Nossa IA está cruzando dados e decifrando talentos a partir da inteligência.',
+    });
     setIsLoading(true);
     setError(null);
 
@@ -421,9 +433,9 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       const cvText = fullText.trim();
-      if (!cvText) throw new Error('Não foi possível extrair texto do PDF. O arquivo pode ser uma imagem ou estar vazio.');
+      if (!cvText)
+        throw new Error('Não foi possível extrair texto do PDF. O arquivo pode ser uma imagem ou estar vazio.');
 
-      // ✅ backend
       const cvEvaluation = await api.analyzeCv(vacancy.jobDetails, cvText);
 
       const updatedCandidateData = { ...candidate, cvEvaluation };
@@ -445,42 +457,47 @@ export const AppContextProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   }, []);
 
-  const handleAddCandidates = useCallback(async (candidates: { name: string; cvFile?: File | null }[]) => {
-    const vacancy = appStateRef.current.selectedVacancy;
-    if (!vacancy) return;
+  const handleAddCandidates = useCallback(
+    async (candidates: { name: string; cvFile?: File | null }[]) => {
+      const vacancy = appStateRef.current.selectedVacancy;
+      if (!vacancy) return;
 
-    const candidateWithCv = candidates.find(c => c.cvFile);
-    setLoadingText({ title: 'Processando...', subtitle: 'Aguarde um momento.' });
-    setIsLoading(true);
+      const candidateWithCv = candidates.find(c => c.cvFile);
+      setLoadingText({ title: 'Processando...', subtitle: 'Aguarde um momento.' });
+      setIsLoading(true);
 
-    try {
-      const candidatesToAdd = candidates.map(c => ({ name: c.name }));
-      const updatedVacancies = await api.addCandidatesToVacancy(vacancy.id, candidatesToAdd);
+      try {
+        const candidatesToAdd = candidates.map(c => ({ name: c.name }));
+        const updatedVacancies = await api.addCandidatesToVacancy(vacancy.id, candidatesToAdd);
 
-      const updatedVacancy = updatedVacancies.find(v => v.id === vacancy.id);
-      if (!updatedVacancy) throw new Error('A vaga não foi encontrada após a atualização.');
+        const updatedVacancy = updatedVacancies.find(v => v.id === vacancy.id);
+        if (!updatedVacancy) throw new Error('A vaga não foi encontrada após a atualização.');
 
-      setVacancies(updatedVacancies);
-      setSelectedVacancy(updatedVacancy);
+        setVacancies(updatedVacancies);
+        setSelectedVacancy(updatedVacancy);
 
-      if (candidateWithCv?.cvFile) {
-        const newCandidate = updatedVacancy.candidates.find(c => c.candidateName === candidateWithCv.name && !c.cvEvaluation);
-        if (newCandidate) {
-          setIsAddCandidateModalOpen(false);
-          await handleCvAnalysis(candidateWithCv.cvFile, newCandidate);
+        if (candidateWithCv?.cvFile) {
+          const newCandidate = updatedVacancy.candidates.find(
+            c => c.candidateName === candidateWithCv.name && !c.cvEvaluation
+          );
+          if (newCandidate) {
+            setIsAddCandidateModalOpen(false);
+            await handleCvAnalysis(candidateWithCv.cvFile, newCandidate);
+          } else {
+            throw new Error('Não foi possível encontrar o candidato recém-criado para iniciar a análise.');
+          }
         } else {
-          throw new Error('Não foi possível encontrar o candidato recém-criado para iniciar a análise.');
+          setIsLoading(false);
+          setIsAddCandidateModalOpen(false);
         }
-      } else {
+      } catch (e: any) {
+        setError(e.message || 'Falha ao adicionar candidatos.');
         setIsLoading(false);
         setIsAddCandidateModalOpen(false);
       }
-    } catch (e: any) {
-      setError(e.message || 'Falha ao adicionar candidatos.');
-      setIsLoading(false);
-      setIsAddCandidateModalOpen(false);
-    }
-  }, [handleCvAnalysis]);
+    },
+    [handleCvAnalysis]
+  );
 
   const handleSavePersonalQuestions = useCallback(async (candidateId: string, questions: BehavioralQuestion[]) => {
     const vacancy = appStateRef.current.selectedVacancy;
