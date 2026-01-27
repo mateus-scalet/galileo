@@ -7,6 +7,7 @@ import {
   BehavioralQuestion,
   CvEvaluationResult,
   EvaluationResult,
+  UserAnswer,
 } from '../types';
 
 // --- SIMULAÇÃO DE LATÊNCIA ---
@@ -59,7 +60,7 @@ Exemplo do formato:
     }
   ]
 }
-`.trim()
+`.trim(),
   },
 
   answerEvaluation: {
@@ -93,7 +94,7 @@ Retorne APENAS JSON válido no formato:
     }
   ]
 }
-`.trim()
+`.trim(),
   },
 
   keywordExtraction: {
@@ -105,7 +106,7 @@ Extraia as principais palavras-chave (hard e soft skills) para o cargo "{jobTitl
 {jobDescription}
 
 Retorne em uma única linha, separando por vírgula.
-`.trim()
+`.trim(),
   },
 
   baselineAnswerGeneration: {
@@ -122,7 +123,7 @@ Descrição:
 {jobDescription}
 
 Retorne apenas o texto da resposta.
-`.trim()
+`.trim(),
   },
 
   originalityEvaluation: {
@@ -148,7 +149,7 @@ Interpretação do score:
 - 0-20: muito original
 - 21-60: algum padrão
 - 61-100: alta probabilidade de texto "modelado"/IA
-`.trim()
+`.trim(),
   },
 
   candidateFeedbackGeneration: {
@@ -172,7 +173,7 @@ Transcrição (perguntas e respostas):
 {answersTranscript}
 
 Retorne apenas o texto do feedback (sem JSON).
-`.trim()
+`.trim(),
   },
 
   cvAnalysis: {
@@ -212,8 +213,8 @@ Retorne APENAS JSON válido no formato:
 Regras:
 - followUpQuestions pode ser [].
 - Se houver followUpQuestions, cada pergunta deve ter 3 critérios somando 10.
-`.trim()
-  }
+`.trim(),
+  },
 };
 
 /* =========================
@@ -233,7 +234,7 @@ const loadData = (): AppData => {
       const parsed: AppData = JSON.parse(saved);
       return {
         ...parsed,
-        prompts: { ...defaultPrompts, ...parsed.prompts }
+        prompts: { ...defaultPrompts, ...parsed.prompts },
       };
     }
   } catch {}
@@ -241,7 +242,7 @@ const loadData = (): AppData => {
   const initial: AppData = {
     version: CURRENT_DATA_VERSION,
     vacancies: getInitialVacancies(),
-    prompts: defaultPrompts
+    prompts: defaultPrompts,
   };
 
   localStorage.setItem(DATA_KEY, JSON.stringify(initial));
@@ -294,8 +295,8 @@ export const api = {
       body: JSON.stringify({
         jobDetails: details,
         questionPromptTemplate: prompts.questionGeneration.template,
-        baselineAnswerPromptTemplate: prompts.baselineAnswerGeneration.template
-      })
+        baselineAnswerPromptTemplate: prompts.baselineAnswerGeneration.template,
+      }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -330,8 +331,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jobDetails: details,
-        keywordPromptTemplate: prompts.keywordExtraction.template
-      })
+        keywordPromptTemplate: prompts.keywordExtraction.template,
+      }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -349,13 +350,64 @@ export const api = {
   },
 
   /* ======================================================
+     🧠 IA — ANALISAR CV (BACKEND)
+     (ÚNICA MUDANÇA: normalização do followUpQuestions.type)
+  ====================================================== */
+  async analyzeCv(details: JobDetails, cvText: string): Promise<CvEvaluationResult> {
+    await simulateLatency();
+
+    const data = loadData();
+    const prompts = data.prompts;
+
+    if (!prompts?.cvAnalysis?.template?.trim()) {
+      throw new Error('Prompt "Análise de CV" está vazio. Vá em Configurações e salve os prompts.');
+    }
+
+    const currentDate = new Date().toLocaleDateString('pt-BR');
+
+    const res = await fetch('/api/analyze-cv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobDetails: details,
+        cvText,
+        cvPromptTemplate: prompts.cvAnalysis.template,
+        currentDate,
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.details || json?.error || 'Erro ao analisar CV');
+    }
+
+    // compatível com variações: { result }, { cvEvaluation }, { evaluation }
+    const raw = json?.result ?? json?.cvEvaluation ?? json?.evaluation;
+    if (!raw || typeof raw !== 'object') {
+      throw new Error('Resposta inválida do backend: resultado da análise de CV não é um objeto.');
+    }
+
+    const normalized: CvEvaluationResult = {
+      ...raw,
+      followUpQuestions: Array.isArray((raw as any).followUpQuestions)
+        ? (raw as any).followUpQuestions.map((q: any) => ({
+            ...q,
+            type: 'behavioral' as const,
+          }))
+        : [],
+    };
+
+    return normalized;
+  },
+
+  /* ======================================================
      🧠 IA — AVALIAR ENTREVISTA (BACKEND)
-     /api/evaluate-interview
   ====================================================== */
   async evaluateInterview(payload: {
     jobDetails: JobDetails;
     interviewScript: InterviewQuestion[];
-    answers: { question: string; answer: string }[];
+    answers: UserAnswer[];
   }): Promise<EvaluationResult> {
     await simulateLatency();
 
@@ -391,8 +443,7 @@ export const api = {
       throw new Error(json?.details || json?.error || 'Erro ao avaliar entrevista');
     }
 
-    // compatível com variações: { evaluation }, { result }
-    const evaluation = (json?.evaluation ?? json?.result);
+    const evaluation = json?.evaluation;
     if (!evaluation || typeof evaluation !== 'object') {
       throw new Error('Resposta inválida do backend: "evaluation" não é um objeto.');
     }
@@ -400,189 +451,14 @@ export const api = {
     return evaluation as EvaluationResult;
   },
 
-  /* ======================================================
-     🧠 IA — ANALISAR CV (BACKEND)
-     (ÚNICA MUDANÇA: normalização do followUpQuestions.type)
-  ====================================================== */
-  async analyzeCv(details: JobDetails, cvText: string): Promise<CvEvaluationResult> {
-    await simulateLatency();
-
-    const data = loadData();
-    const prompts = data.prompts;
-
-    if (!prompts?.cvAnalysis?.template?.trim()) {
-      throw new Error('Prompt "Análise de CV" está vazio. Vá em Configurações e salve os prompts.');
-    }
-
-    const currentDate = new Date().toLocaleDateString('pt-BR');
-
-    const res = await fetch('/api/analyze-cv', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jobDetails: details,
-        cvText,
-        cvPromptTemplate: prompts.cvAnalysis.template,
-        currentDate,
-      })
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(json?.details || json?.error || 'Erro ao analisar CV');
-    }
-
-    // compatível com variações: { result }, { cvEvaluation }, { evaluation }
-    const raw = (json?.result ?? json?.cvEvaluation ?? json?.evaluation);
-    if (!raw || typeof raw !== 'object') {
-      throw new Error('Resposta inválida do backend: resultado da análise de CV não é um objeto.');
-    }
-
-    const normalized: CvEvaluationResult = {
-      ...raw,
-      followUpQuestions: Array.isArray((raw as any).followUpQuestions)
-        ? (raw as any).followUpQuestions.map((q: any) => ({
-            ...q,
-            type: 'behavioral' as const,
-          }))
-        : [],
-    };
-
-    return normalized;
-  },
-
   /* ---------- VAGAS ---------- */
-  async saveVacancy(
-    jobDetails: JobDetails,
-    questions: InterviewQuestion[],
-    editingVacancy: Vacancy | null
-  ) {
+  async saveVacancy(jobDetails: JobDetails, questions: InterviewQuestion[], editingVacancy: Vacancy | null) {
     await simulateLatency();
     const data = loadData();
 
     const vacancies = editingVacancy
-      ? data.vacancies.map(v =>
-          v.id === editingVacancy.id ? { ...v, jobDetails, questions } : v
-        )
+      ? data.vacancies.map(v => (v.id === editingVacancy.id ? { ...v, jobDetails, questions } : v))
       : [
           ...data.vacancies,
           {
-            id: `vac_${Date.now()}`,
-            jobDetails,
-            questions,
-            candidates: [],
-            status: 'Entrevistando',
-            createdAt: new Date().toISOString()
-          }
-        ];
-
-    saveData({ ...data, vacancies });
-    return vacancies;
-  },
-
-  /* ---------- CANDIDATOS ---------- */
-  async addCandidatesToVacancy(vacancyId: string, candidates: { name: string }[]) {
-    await simulateLatency();
-    const data = loadData();
-
-    const newCandidates: CandidateResult[] = candidates.map(c => ({
-      id: `cand_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      candidateName: c.name,
-      interviewDate: new Date().toISOString(),
-      answers: [],
-      checkAnswers: []
-    }));
-
-    const vacancies = data.vacancies.map(v =>
-      v.id === vacancyId
-        ? { ...v, candidates: [...v.candidates, ...newCandidates] }
-        : v
-    );
-
-    saveData({ ...data, vacancies });
-    return vacancies;
-  },
-
-  async savePersonalQuestions(
-    vacancyId: string,
-    candidateId: string,
-    questions: BehavioralQuestion[]
-  ) {
-    await simulateLatency();
-    const data = loadData();
-
-    const vacancies = data.vacancies.map(v => {
-      if (v.id !== vacancyId) return v;
-      return {
-        ...v,
-        candidates: v.candidates.map(c =>
-          c.id === candidateId ? { ...c, personalQuestions: questions } : c
-        )
-      };
-    });
-
-    saveData({ ...data, vacancies });
-    return vacancies;
-  },
-
-  /* ---------- RESULTADOS ---------- */
-  async saveCandidateResult(
-    vacancyId: string,
-    candidateResult: CandidateResult,
-    interviewScript: InterviewQuestion[]
-  ) {
-    await simulateLatency();
-    const data = loadData();
-    let updatedCandidate: CandidateResult | null = null;
-
-    const vacancies = data.vacancies.map(v => {
-      if (v.id !== vacancyId) return v;
-
-      const candidates = v.candidates.map(c => {
-        if (c.id === candidateResult.id) {
-          updatedCandidate = { ...c, ...candidateResult, interviewScript };
-          return updatedCandidate;
-        }
-        return c;
-      });
-
-      return { ...v, candidates };
-    });
-
-    saveData({ ...data, vacancies });
-
-    return {
-      updatedVacancies: vacancies,
-      updatedVacancy: vacancies.find(v => v.id === vacancyId) || null,
-      updatedCandidate
-    };
-  },
-
-  /* ---------- PROMPTS ---------- */
-  async savePrompts(prompts: PromptSettings) {
-    await simulateLatency();
-    const data = loadData();
-    saveData({ ...data, prompts });
-    return prompts;
-  },
-
-  /* ======================================================
-     🎧 ÁUDIO
-  ====================================================== */
-  async sendInterviewAudio(audio: Blob) {
-    const formData = new FormData();
-    formData.append('audio', audio);
-
-    const res = await fetch('/api/interview-session', {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!res.ok) {
-      throw new Error('Erro ao enviar áudio');
-    }
-
-    return res.json();
-  }
-};
+            id: `vac_${Date_
